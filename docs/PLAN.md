@@ -32,7 +32,7 @@ Before you can hash, fingerprint, compare, or lock a set of files, you need to k
 - A template recognizer (that's `fingerprint`)
 - A lockfile generator (that's `lock`)
 - A diff tool (that's `compare` / `rvl`)
-- A file parser (it reads metadata, never file content beyond magic bytes for MIME)
+- A file parser (it reads filesystem metadata only, never file content)
 
 It does not tell you *what's inside* a file.
 It tells you *that the file exists, where it is, how big it is, and when it was last modified*.
@@ -68,14 +68,14 @@ vacuum witness <query|last|count> [OPTIONS]
 
 - `<ROOT>...`: One or more root directories to scan. At least one required.
 
-### Flags (v0.1 — core)
+### Flags
 
 - `--include <GLOB>`: Include pattern (repeatable; default: all files). Standard glob syntax (`*.pdf`, `*.xlsx`, `**/*.csv`).
 - `--exclude <GLOB>`: Exclude pattern (repeatable). Applied after include. Matches against `relative_path`.
 - `--no-follow`: Do not follow symlinks (default: follow symlinks).
 - `--no-witness`: Suppress witness ledger recording for this run.
 - `--describe`: Print the compiled-in `operator.json` to stdout and exit 0. Checked before root arguments are validated, so `vacuum --describe` works with no positional args.
-- `--schema`: Print the JSON Schema for the JSONL record to stdout and exit 0.
+- `--schema`: Print the JSON Schema for the JSONL record to stdout and exit 0. Like `--describe`, checked before root arguments are validated.
 - `--progress`: Emit structured progress JSONL to stderr (see Progress reporting).
 - `--version`: Print `vacuum <semver>` to stdout and exit 0.
 
@@ -90,9 +90,9 @@ There is no exit code `1` for vacuum. vacuum either scans successfully or refuse
 
 ### Streams
 
-- JSONL records to stdout (always structured; no human mode for the manifest itself).
-- Progress (when `--progress`): structured JSONL to stderr.
-- Warnings (without `--progress`): unstructured one-per-line to stderr.
+- **stdout (exit 0):** JSONL records (always structured; no human mode for the manifest itself).
+- **stdout (exit 2):** single refusal JSON envelope (see Refusal Codes).
+- **stderr:** progress JSONL when `--progress`; unstructured one-per-line warnings otherwise.
 
 ### Witness ledger (epistemic spine parity)
 
@@ -124,6 +124,8 @@ vacuum witness count [--tool <name>] [--since <iso8601>] [--until <iso8601>] \
 ### 1. SCAN_COMPLETE
 
 All roots were enumerated. The manifest is on stdout. Individual file-level failures (permission denied, broken symlinks) are recorded as `_skipped` records in the stream — they do not prevent the scan from completing.
+
+A scan that finds zero files (empty directories, or all files excluded by `--include`/`--exclude`) is still SCAN_COMPLETE with exit 0 — stdout will have zero JSONL lines. This is not a refusal. Downstream tools (e.g., `lock`) handle empty input with their own refusal codes (`E_EMPTY`).
 
 ### 2. REFUSAL
 
@@ -159,11 +161,15 @@ Each record is a single JSON object on one line (JSONL). One record per discover
 | `path` | string | no | Absolute path (OS-native separators for filesystem access) |
 | `relative_path` | string | no | Path relative to `root`, normalized to forward slashes |
 | `root` | string | no | Absolute path of the scan root this file belongs to |
-| `size` | u64 | no | File size in bytes (from filesystem metadata) |
-| `mtime` | string | no | Last modified time, ISO 8601 UTC with millisecond precision |
+| `size` | u64 | yes | File size in bytes (from filesystem metadata); `null` when `_skipped` |
+| `mtime` | string | yes | Last modified time, ISO 8601 UTC with millisecond precision; `null` when `_skipped` |
 | `extension` | string | yes | File extension including dot (e.g., `.csv`, `.xlsx`); `null` if no extension |
 | `mime_guess` | string | yes | MIME type guessed from extension; `null` if unknown |
 | `tool_versions` | object | no | `{ "vacuum": "<semver>" }` — accumulated by downstream tools |
+| `_skipped` | bool | yes | `true` when the file could not be stat'd; absent on normal records |
+| `_warnings` | object[] | yes | Array of warning objects (see below); absent on normal records |
+
+`_skipped` and `_warnings` are omitted from normal records (not serialized when absent). They only appear on records where vacuum could not read file metadata. See **Skipped records** for the full contract.
 
 ### Skipped records
 
@@ -181,7 +187,7 @@ When vacuum encounters a file it cannot stat (permission denied, broken symlink,
   "mime_guess": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "_skipped": true,
   "_warnings": [
-    { "tool": "vacuum", "code": "E_FILE_PERMISSION", "message": "Cannot read file metadata", "detail": { "error": "Permission denied" } }
+    { "tool": "vacuum", "code": "E_IO", "message": "Cannot read file metadata: permission denied", "detail": { "error": "Permission denied" } }
   ],
   "tool_versions": { "vacuum": "0.1.0" }
 }
@@ -195,7 +201,7 @@ For skipped records:
 
 ### Ordering
 
-Records are emitted sorted by `relative_path` (lexicographic, byte-order). This requires vacuum to collect all entries during the scan, then sort and emit. vacuum does NOT emit records as they are discovered — deterministic ordering requires seeing all paths first.
+Records — including `_skipped` records — are emitted sorted by `relative_path` (lexicographic, byte-order). Skipped records participate in the same sort; they are NOT grouped separately. This requires vacuum to collect all entries during the scan, then sort and emit. vacuum does NOT emit records as they are discovered — deterministic ordering requires seeing all paths first.
 
 When multiple roots are provided, records from all roots are interleaved by `relative_path`. If the same `relative_path` appears under different roots, records are further sorted by `root` (lexicographic, byte-order).
 
@@ -203,11 +209,12 @@ When multiple roots are provided, records from all roots are interleaved by `rel
 
 - `relative_path` always uses forward slashes (`/`), regardless of OS.
 - `path` and `root` use OS-native separators (for filesystem access).
-- Symlink targets are resolved to their canonical path when `--no-follow` is not set; the `path` field shows the resolved path.
+- When following symlinks (the default): `path` shows the resolved canonical target; `relative_path` preserves the **link name** as it appears in the directory tree (the link is what the user named; the target is where it points).
+- With `--no-follow`: symlink files appear in the manifest with their own `lstat` metadata (`size` = link target path length, `mtime` = link mtime); symlink directories are not traversed (their children are never discovered).
 
 ### MIME guessing
 
-MIME type is guessed from the file extension using a built-in lookup table. This is a cheap heuristic, not a content-based detection. The `infer` crate (magic-bytes detection) is a candidate for v0.1 enhancement but not required for v0.
+MIME type is guessed from the file extension using a built-in lookup table. This is a cheap heuristic, not a content-based detection. The `infer` crate (magic-bytes detection) is a candidate for a future enhancement (see Scope: Can defer).
 
 Built-in extension-to-MIME mappings (minimum set):
 
@@ -257,16 +264,22 @@ Directories are always traversed regardless of include/exclude — patterns only
 
 > **Note:** Per-file errors (individual files that can't be stat'd) are NOT refusals. They are recorded as `_skipped` records in the output stream. Refusals are reserved for root-level failures that prevent the scan from starting.
 
-Refusal envelope (same as all spine tools):
+Refusal JSON envelope (same wrapper as all spine tools):
 
 ```json
 {
-  "code": "E_ROOT_NOT_FOUND",
-  "message": "Root path does not exist",
-  "detail": { "root": "/data/nonexistent/" },
-  "next_command": null
+  "version": "vacuum.v0",
+  "outcome": "REFUSAL",
+  "refusal": {
+    "code": "E_ROOT_NOT_FOUND",
+    "message": "Root path does not exist",
+    "detail": { "root": "/data/nonexistent/" },
+    "next_command": null
+  }
 }
 ```
+
+On refusal the envelope is a single JSON object emitted to stdout (not JSONL, not a stream record). Exit code is `2`.
 
 ### Refusal detail schemas
 
@@ -306,21 +319,36 @@ When `--progress` is provided, vacuum emits structured JSONL to stderr:
 
 ## Implementation Notes
 
+### Key dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `clap` | CLI argument parsing (derive API) |
+| `serde` + `serde_json` | JSONL serialization |
+| `walkdir` | Recursive directory traversal with symlink cycle detection |
+| `globset` | Compiled glob pattern matching for `--include` / `--exclude` |
+| `blake3` | Witness record hashing (`output_hash`, `binary_hash`, chain `id`) |
+| `chrono` | ISO 8601 timestamp formatting |
+
 ### Execution flow
 
 ```
  1. Parse CLI args (clap)           → exit 2 on bad args; --version handled here by clap
- 2. If --describe: print operator.json to stdout, exit 0
- 3. If --schema: print JSON Schema to stdout, exit 0
- 4. Validate all roots exist and are readable directories
-    → E_ROOT_NOT_FOUND / E_ROOT_PERMISSION on first failure (STOP)
- 5. Walk all roots, collecting file entries
+ 2. If witness subcommand: dispatch to witness query/last/count, exit
+ 3. If --describe: print operator.json to stdout, exit 0
+ 4. If --schema: print JSON Schema to stdout, exit 0
+ 5. Validate roots: at least one provided (exit 2 if empty),
+    all exist and are readable directories
+    → On failure: emit refusal envelope to stdout, append witness
+      record with outcome "REFUSAL" (if not --no-witness), exit 2
+ 6. Walk all roots, collecting file entries
     → Per-file failures become _skipped records (NOT refusals)
     → Apply --include / --exclude filters
- 6. Sort collected entries by (relative_path, root)
- 7. Emit sorted JSONL to stdout
- 8. Append witness record (if not --no-witness)
- 9. Exit 0
+ 7. Sort collected entries by (relative_path, root)
+ 8. Emit sorted JSONL to stdout
+ 9. Append witness record (if not --no-witness); output_hash is
+    BLAKE3 of the serialized JSONL (computed during step 8)
+10. Exit 0
 ```
 
 ### Core data structures
@@ -329,9 +357,11 @@ When `--progress` is provided, vacuum emits structured JSONL to stderr:
 // === CLI ===
 
 #[derive(Parser)]
-pub struct Args {
-    /// Root directories to scan
-    #[arg(required = true)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
+    /// Root directories to scan (required unless subcommand or --describe/--schema/--version)
     pub roots: Vec<PathBuf>,
 
     /// Include glob pattern (repeatable)
@@ -361,6 +391,22 @@ pub struct Args {
     /// Print JSON Schema and exit
     #[arg(long)]
     pub schema: bool,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+    /// Query the witness ledger
+    Witness {
+        #[command(subcommand)]
+        action: WitnessAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum WitnessAction {
+    Query { /* filter flags */ },
+    Last,
+    Count { /* filter flags */ },
 }
 
 // === Output record ===
@@ -443,14 +489,14 @@ Use the `globset` crate for `--include` / `--exclude` pattern matching:
 
 All entries are collected into a `Vec<VacuumRecord>` during the walk, then sorted by `(relative_path, root)` before emission. This is required for deterministic output.
 
-For very large scans (millions of files), this means the full manifest is held in memory before any output. This is acceptable for v0 — the manifest records are small (~200-300 bytes each), so 1M files ≈ 200-300 MB of records.
+For very large scans (millions of files), this means the full manifest is held in memory before any output. This is acceptable for v0 — in-memory records are ~400-500 bytes each (Rust String heap overhead on top of the ~250-byte serialized JSON), so 1M files ≈ 400-500 MB.
 
 ### Module structure
 
 ```
 src/
 ├── cli/
-│   ├── args.rs          # clap derive Args struct
+│   ├── args.rs          # clap derive Cli / Command / WitnessAction
 │   ├── exit.rs          # Exit code mapping
 │   └── mod.rs
 ├── walk/
@@ -477,7 +523,7 @@ src/
 │   ├── ledger.rs        # Append to witness ledger
 │   ├── query.rs         # Witness query subcommands
 │   └── mod.rs
-├── lib.rs               # pub fn run() → Result<u8, Box<dyn Error>>
+├── lib.rs               # pub fn run() → u8 (handles errors internally, returns exit code)
 └── main.rs              # Minimal: calls vacuum::run(), maps to ExitCode
 ```
 
@@ -610,6 +656,8 @@ Provide test fixtures in `tests/fixtures/`:
 - Scan with `--include "*.csv"` → only CSV files in output
 - Scan with `--exclude "*.tmp"` → tmp files excluded
 
+Golden file comparisons must normalize or ignore `mtime` (and `path`/`root` absolute prefixes), since these vary by filesystem state and test environment. Compare structurally: field presence, types, `relative_path` ordering, and `size` values. Pin fixture file contents so `size` is stable.
+
 ---
 
 ## Scope: v0.1 (ship this)
@@ -643,4 +691,4 @@ Provide test fixtures in `tests/fixtures/`:
 
 ## Open Questions
 
-*None currently blocking. Build it.*
+1. **Multi-root `relative_path` collisions.** If you scan `/data/a/` and `/data/b/` and both contain `tape.csv`, vacuum emits two records with the same `relative_path`. vacuum sorts these by `(relative_path, root)` which is deterministic, but downstream `lock` uses `relative_path` as the member `path` — creating ambiguous members. Options: (a) vacuum prefixes `relative_path` with a root disambiguator for multi-root scans, (b) lock uses `(path, root)` tuples as member identity, (c) declare multi-root scans with colliding relative paths as a user error. Not blocking v0 (single-root is the common case), but needs a decision before multi-root is relied on in production pipelines.
