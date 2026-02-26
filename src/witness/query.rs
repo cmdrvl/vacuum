@@ -90,18 +90,7 @@ fn run_query(
         );
     } else {
         for value in &matches {
-            println!(
-                "{} {} {}",
-                value.get("ts").and_then(Value::as_str).unwrap_or("<no-ts>"),
-                value
-                    .get("outcome")
-                    .and_then(Value::as_str)
-                    .unwrap_or("<no-outcome>"),
-                value
-                    .get("tool")
-                    .and_then(Value::as_str)
-                    .unwrap_or("<no-tool>")
-            );
+            print_human_row(value);
         }
     }
 
@@ -126,21 +115,7 @@ fn run_last(entries: &[LedgerEntry], json_mode: bool) -> u8 {
             serde_json::to_string(&last.value).unwrap_or_else(|_| "{}".to_string())
         );
     } else {
-        println!(
-            "{} {} {}",
-            last.value
-                .get("ts")
-                .and_then(Value::as_str)
-                .unwrap_or("<no-ts>"),
-            last.value
-                .get("outcome")
-                .and_then(Value::as_str)
-                .unwrap_or("<no-outcome>"),
-            last.value
-                .get("tool")
-                .and_then(Value::as_str)
-                .unwrap_or("<no-tool>")
-        );
+        print_human_row(&last.value);
     }
 
     crate::cli::exit::SCAN_COMPLETE
@@ -183,6 +158,21 @@ fn read_entries() -> Result<Vec<LedgerEntry>, std::io::Error> {
             })
         })
         .collect())
+}
+
+fn print_human_row(value: &Value) {
+    println!(
+        "ts={} outcome={} tool={}",
+        value.get("ts").and_then(Value::as_str).unwrap_or("<no-ts>"),
+        value
+            .get("outcome")
+            .and_then(Value::as_str)
+            .unwrap_or("<no-outcome>"),
+        value
+            .get("tool")
+            .and_then(Value::as_str)
+            .unwrap_or("<no-tool>")
+    );
 }
 
 struct QueryFilter {
