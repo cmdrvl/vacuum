@@ -689,6 +689,9 @@ Golden file comparisons must normalize or ignore `mtime` (and `path`/`root` abso
 
 ---
 
-## Open Questions
+## Decisions
 
-1. **Multi-root `relative_path` collisions.** If you scan `/data/a/` and `/data/b/` and both contain `tape.csv`, vacuum emits two records with the same `relative_path`. vacuum sorts these by `(relative_path, root)` which is deterministic, but downstream `lock` uses `relative_path` as the member `path` — creating ambiguous members. Options: (a) vacuum prefixes `relative_path` with a root disambiguator for multi-root scans, (b) lock uses `(path, root)` tuples as member identity, (c) declare multi-root scans with colliding relative paths as a user error. Not blocking v0 (single-root is the common case), but needs a decision before multi-root is relied on in production pipelines.
+1. **Multi-root `relative_path` collisions (resolved).**
+   - **Decision:** Keep vacuum output semantics unchanged. Colliding `relative_path` values across different roots are allowed, and record identity for multi-root manifests is the tuple `(relative_path, root)`.
+   - **Rationale:** This preserves the current `vacuum.v0` schema and deterministic ordering contract while avoiding synthetic path rewriting in the scanner.
+   - **Downstream compatibility impact:** `lock` and other consumers must treat `(path, root)` as identity when ingesting multi-root manifests. A consumer that keys only on `path` must either upgrade to tuple identity support or reject ambiguous multi-root inputs explicitly.
