@@ -234,7 +234,10 @@ fn refusal_from_io(root: &Path, error: io::Error) -> Refusal {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::PathBuf};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     use super::{scan_roots, validate_roots};
     use crate::refusal::codes::RefusalCode;
@@ -322,6 +325,55 @@ mod tests {
             .find(|record| record.relative_path == "file_link.txt")
             .expect("file symlink should be included");
         assert!(linked_file.path.ends_with("file_link.txt"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn broken_file_symlink_is_emitted_as_skipped_record() {
+        let root = fixture("symlinks");
+        let records = scan_roots(std::slice::from_ref(&root), true);
+
+        let skipped = records
+            .iter()
+            .find(|record| record.relative_path == "broken_link")
+            .expect("broken symlink should be represented");
+
+        assert_eq!(skipped._skipped, Some(true));
+        assert_eq!(skipped.size, None);
+        assert_eq!(skipped.mtime, None);
+        assert_eq!(skipped.root, root.to_string_lossy());
+
+        let warning = skipped
+            ._warnings
+            .as_ref()
+            .and_then(|warnings| warnings.first())
+            .expect("skipped record should include warning");
+        assert_eq!(warning.tool, "vacuum");
+        assert_eq!(warning.code, "E_IO");
+        assert!(warning.message.contains("Cannot read"));
+        assert!(warning.detail["error"].is_string());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skipped_record_preserves_extension_and_mime_when_derivable() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+        let root = temp_dir.path().join("root");
+        fs::create_dir_all(&root).expect("root should be created");
+        symlink(Path::new("missing.csv"), root.join("broken.csv"))
+            .expect("broken symlink should be created");
+
+        let records = scan_roots(std::slice::from_ref(&root), true);
+        let skipped = records
+            .iter()
+            .find(|record| record.relative_path == "broken.csv")
+            .expect("broken csv symlink should be represented");
+
+        assert_eq!(skipped._skipped, Some(true));
+        assert_eq!(skipped.extension.as_deref(), Some(".csv"));
+        assert_eq!(skipped.mime_guess.as_deref(), Some("text/csv"));
     }
 
     #[cfg(unix)]
