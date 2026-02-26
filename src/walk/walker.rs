@@ -1,7 +1,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, Instant, SystemTime},
 };
 
 use chrono::{SecondsFormat, Utc};
@@ -18,7 +18,16 @@ use crate::{
 };
 
 pub fn scan_roots(roots: &[PathBuf], follow_symlinks: bool) -> Vec<VacuumRecord> {
+    scan_roots_with_progress(roots, follow_symlinks, false)
+}
+
+pub fn scan_roots_with_progress(
+    roots: &[PathBuf],
+    follow_symlinks: bool,
+    progress_enabled: bool,
+) -> Vec<VacuumRecord> {
     let mut records = Vec::new();
+    let mut progress = ProgressReporter::new(progress_enabled);
 
     for root in roots {
         let absolute_root = absolute_root(root);
@@ -40,18 +49,31 @@ pub fn scan_roots(roots: &[PathBuf], follow_symlinks: bool) -> Vec<VacuumRecord>
                         entry.path(),
                         follow_symlinks,
                     ));
+                    progress.record_processed();
+                    progress.emit_if_due();
+
+                    if let Some(last_record) = records.last() {
+                        emit_warning_for_skipped(last_record, progress_enabled);
+                    }
                 }
                 Err(error) => {
                     if let Some(skipped) =
                         build_skipped_from_walk_error(&absolute_root, &root_value, &error)
                     {
                         records.push(skipped);
+                        progress.record_processed();
+                        progress.emit_if_due();
+
+                        if let Some(last_record) = records.last() {
+                            emit_warning_for_skipped(last_record, progress_enabled);
+                        }
                     }
                 }
             }
         }
     }
 
+    progress.emit_final();
     records
 }
 
@@ -170,6 +192,87 @@ fn io_warning(message: String, error: String) -> Warning {
         code: "E_IO".to_string(),
         message,
         detail: json!({ "error": error }),
+    }
+}
+
+fn emit_warning_for_skipped(record: &VacuumRecord, progress_enabled: bool) {
+    if record._skipped != Some(true) {
+        return;
+    }
+
+    let warning = match record
+        ._warnings
+        .as_ref()
+        .and_then(|warnings| warnings.first())
+    {
+        Some(warning) => warning,
+        None => return,
+    };
+
+    if progress_enabled {
+        let payload = json!({
+            "type": "warning",
+            "tool": "vacuum",
+            "path": record.path,
+            "message": warning.message,
+        });
+        eprintln!("{payload}");
+    } else {
+        eprintln!("vacuum: skipped {} ({})", record.path, warning.message);
+    }
+}
+
+struct ProgressReporter {
+    enabled: bool,
+    processed: u64,
+    started_at: Instant,
+    last_emitted_at: Instant,
+}
+
+impl ProgressReporter {
+    fn new(enabled: bool) -> Self {
+        let now = Instant::now();
+        Self {
+            enabled,
+            processed: 0,
+            started_at: now,
+            last_emitted_at: now,
+        }
+    }
+
+    fn record_processed(&mut self) {
+        self.processed = self.processed.saturating_add(1);
+    }
+
+    fn emit_if_due(&mut self) {
+        if !self.enabled {
+            return;
+        }
+
+        let elapsed = self.last_emitted_at.elapsed();
+        if self.processed.is_multiple_of(1000) || elapsed >= Duration::from_millis(500) {
+            self.emit();
+        }
+    }
+
+    fn emit_final(&mut self) {
+        if !self.enabled {
+            return;
+        }
+
+        self.emit();
+    }
+
+    fn emit(&mut self) {
+        self.last_emitted_at = Instant::now();
+        let payload = json!({
+            "type": "progress",
+            "tool": "vacuum",
+            "processed": self.processed,
+            "total": serde_json::Value::Null,
+            "elapsed_ms": self.started_at.elapsed().as_millis() as u64,
+        });
+        eprintln!("{payload}");
     }
 }
 

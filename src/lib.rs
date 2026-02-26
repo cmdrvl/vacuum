@@ -43,7 +43,7 @@ pub fn run() -> u8 {
         return cli::exit::REFUSAL;
     }
 
-    let scanned = walk::walker::scan_roots(&cli.roots, !cli.no_follow);
+    let scanned = walk::walker::scan_roots_with_progress(&cli.roots, !cli.no_follow, cli.progress);
     let filtered = walk::filter::apply_filters(scanned, &cli.include, &cli.exclude);
     output::jsonl::emit_records(&filtered);
 
