@@ -41,6 +41,34 @@ fn witness_query_filters_and_limits_results_in_json_mode() {
 }
 
 #[test]
+fn witness_query_human_mode_renders_rows_and_no_match_exits_one() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let ledger_path = temp_dir.path().join("witness.jsonl");
+    write_ledger(&ledger_path);
+
+    let matched = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "query", "--tool", "vacuum"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness query should run");
+    assert_eq!(matched.status.code(), Some(0));
+    let matched_stdout = String::from_utf8(matched.stdout).expect("stdout should be utf-8");
+    assert!(matched_stdout.contains("tool=vacuum"));
+    assert!(matched_stdout.contains("outcome=SCAN_COMPLETE"));
+
+    let unmatched = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "query", "--tool", "missing"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness query should run");
+    assert_eq!(
+        unmatched.status.code(),
+        Some(1),
+        "no-match query should exit 1"
+    );
+}
+
+#[test]
 fn witness_last_returns_most_recent_record() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let ledger_path = temp_dir.path().join("witness.jsonl");
@@ -58,6 +86,36 @@ fn witness_last_returns_most_recent_record() {
         serde_json::from_str(stdout.trim()).expect("last output should be json object");
     assert_eq!(row["tool"], "other");
     assert_eq!(row["ts"], "2026-01-03T00:00:00.000Z");
+}
+
+#[test]
+fn witness_last_human_mode_and_empty_ledger_exit_behavior() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let ledger_path = temp_dir.path().join("witness.jsonl");
+    write_ledger(&ledger_path);
+
+    let last = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "last"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness last should run");
+    assert_eq!(last.status.code(), Some(0));
+    let last_stdout = String::from_utf8(last.stdout).expect("stdout should be utf-8");
+    assert!(last_stdout.contains("tool=other"));
+    assert!(last_stdout.contains("outcome=SCAN_COMPLETE"));
+
+    let empty_ledger = temp_dir.path().join("empty-witness.jsonl");
+    fs::write(&empty_ledger, "").expect("empty ledger should be created");
+    let empty = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "last"])
+        .env("EPISTEMIC_WITNESS", &empty_ledger)
+        .output()
+        .expect("witness last should run");
+    assert_eq!(
+        empty.status.code(),
+        Some(1),
+        "empty ledger should return no-match exit code"
+    );
 }
 
 #[test]
@@ -95,4 +153,50 @@ fn witness_count_honors_filters_and_no_match_exit_code() {
         Some(1),
         "no-match count should exit 1"
     );
+
+    let human = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "count", "--tool", "vacuum"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness count should run");
+    assert_eq!(human.status.code(), Some(0));
+    assert_eq!(
+        String::from_utf8(human.stdout)
+            .expect("stdout should be utf-8")
+            .trim(),
+        "2"
+    );
+}
+
+#[test]
+fn witness_human_modes_and_empty_exit_behavior() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let ledger_path = temp_dir.path().join("witness.jsonl");
+    write_ledger(&ledger_path);
+
+    let query_human = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "query", "--tool", "vacuum"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness query should run");
+    assert_eq!(query_human.status.code(), Some(0));
+    let query_stdout = String::from_utf8(query_human.stdout).expect("stdout should be utf-8");
+    assert!(query_stdout.contains("SCAN_COMPLETE"));
+
+    let count_human = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "count", "--tool", "vacuum"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness count should run");
+    assert_eq!(count_human.status.code(), Some(0));
+    let count_stdout = String::from_utf8(count_human.stdout).expect("stdout should be utf-8");
+    assert_eq!(count_stdout.trim(), "2");
+
+    fs::write(&ledger_path, "").expect("ledger should be emptied");
+    let last_empty = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "last"])
+        .env("EPISTEMIC_WITNESS", &ledger_path)
+        .output()
+        .expect("witness last should run");
+    assert_eq!(last_empty.status.code(), Some(1));
 }

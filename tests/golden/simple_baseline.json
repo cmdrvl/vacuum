@@ -1,0 +1,23 @@
+[
+  {
+    "relative_path": "alpha.csv",
+    "size": 21,
+    "extension": ".csv",
+    "mime_guess": "text/csv",
+    "_skipped": false
+  },
+  {
+    "relative_path": "config.json",
+    "size": 33,
+    "extension": ".json",
+    "mime_guess": "application/json",
+    "_skipped": false
+  },
+  {
+    "relative_path": "notes.txt",
+    "size": 21,
+    "extension": ".txt",
+    "mime_guess": "text/plain",
+    "_skipped": false
+  }
+]
