@@ -1,76 +1,77 @@
-use std::process::Command;
+#[cfg(unix)]
+mod tests {
+    use std::{path::PathBuf, process::Command};
 
-fn fixture(name: &str) -> String {
-    format!("{}/tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"))
-}
+    use serde_json::Value;
 
-#[test]
-fn progress_emits_structured_stderr_without_polluting_stdout_manifest() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
-        .arg(fixture("simple"))
-        .arg("--progress")
-        .output()
-        .expect("vacuum binary should run");
-
-    assert!(output.status.success(), "scan should exit 0");
-
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
-
-    for line in stdout.lines() {
-        let record: serde_json::Value =
-            serde_json::from_str(line).expect("stdout should remain JSONL manifest records");
-        assert_eq!(record["version"], "vacuum.v0");
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join(name)
     }
 
-    let progress_lines = stderr
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|value| value["type"] == "progress")
-        .collect::<Vec<_>>();
-    assert!(
-        !progress_lines.is_empty(),
-        "progress should emit structured progress JSONL to stderr"
-    );
-}
+    #[test]
+    fn progress_mode_emits_structured_stderr_without_polluting_stdout_manifest() {
+        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+            .arg(fixture("symlinks"))
+            .arg("--progress")
+            .output()
+            .expect("vacuum binary should run");
 
-#[test]
-fn progress_emits_structured_warning_records_for_skipped_entries() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
-        .arg(fixture("symlinks"))
-        .arg("--progress")
-        .output()
-        .expect("vacuum binary should run");
+        assert!(output.status.success(), "scan should exit 0");
 
-    assert!(output.status.success(), "scan should exit 0");
+        let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
 
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
-    let warning_lines = stderr
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .filter(|value| value["type"] == "warning")
-        .collect::<Vec<_>>();
-
-    assert!(
-        !warning_lines.is_empty(),
-        "skipped entries should emit structured warning lines with --progress"
-    );
-}
-
-#[test]
-fn without_progress_stderr_warnings_are_unstructured_lines() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
-        .arg(fixture("symlinks"))
-        .output()
-        .expect("vacuum binary should run");
-
-    assert!(output.status.success(), "scan should exit 0");
-
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
-    assert!(
-        stderr
+        let manifest_records = stdout
             .lines()
-            .any(|line| line.starts_with("vacuum: skipped ")),
-        "without --progress warnings should be unstructured text lines"
-    );
+            .map(|line| serde_json::from_str::<Value>(line).expect("manifest line should be json"))
+            .collect::<Vec<_>>();
+        assert!(
+            !manifest_records.is_empty(),
+            "scan should emit manifest records to stdout"
+        );
+        assert!(
+            manifest_records
+                .iter()
+                .all(|value| value["version"] == "vacuum.v0")
+        );
+        assert!(manifest_records.iter().all(|value| value["type"].is_null()));
+
+        let progress_lines = stderr
+            .lines()
+            .map(|line| serde_json::from_str::<Value>(line).expect("progress line should be json"))
+            .collect::<Vec<_>>();
+        assert!(
+            progress_lines.iter().any(|line| line["type"] == "progress"),
+            "stderr should contain structured progress records"
+        );
+        assert!(
+            progress_lines.iter().any(|line| line["type"] == "warning"),
+            "stderr should contain structured warning records for skipped files"
+        );
+    }
+
+    #[test]
+    fn default_mode_emits_unstructured_warnings_only() {
+        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+            .arg(fixture("symlinks"))
+            .output()
+            .expect("vacuum binary should run");
+
+        assert!(output.status.success(), "scan should exit 0");
+
+        let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
+        assert!(
+            stderr.lines().any(|line| line.contains("vacuum: skipped")),
+            "default stderr should include unstructured warning lines"
+        );
+        assert!(
+            stderr
+                .lines()
+                .all(|line| serde_json::from_str::<Value>(line).is_err()),
+            "default stderr should not emit structured json progress lines"
+        );
+    }
 }
