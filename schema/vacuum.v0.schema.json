@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cmdrvl/vacuum/schema/vacuum.v0.schema.json",
+  "title": "vacuum.v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "path",
+    "relative_path",
+    "root",
+    "size",
+    "mtime",
+    "extension",
+    "mime_guess",
+    "tool_versions"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "const": "vacuum.v0"
+    },
+    "path": {
+      "type": "string"
+    },
+    "relative_path": {
+      "type": "string"
+    },
+    "root": {
+      "type": "string"
+    },
+    "size": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "mtime": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "extension": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mime_guess": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "_skipped": {
+      "type": "boolean"
+    },
+    "_warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "required": [
+        "vacuum"
+      ],
+      "properties": {
+        "vacuum": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "tool",
+        "code",
+        "message",
+        "detail"
+      ],
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "detail": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

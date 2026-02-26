@@ -28,7 +28,7 @@ pub fn run() -> u8 {
     }
 
     if cli.schema {
-        output::jsonl::print_schema_stub();
+        output::jsonl::print_schema_manifest();
         return cli::exit::SCAN_COMPLETE;
     }
 

@@ -14,10 +14,12 @@ pub fn print_operator_manifest() {
     println!("{}", operator_manifest().trim_end());
 }
 
-pub fn print_schema_stub() {
-    println!(
-        "{{\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"title\":\"vacuum.v0\"}}"
-    );
+pub fn schema_manifest() -> &'static str {
+    include_str!("../../schema/vacuum.v0.schema.json")
+}
+
+pub fn print_schema_manifest() {
+    println!("{}", schema_manifest().trim_end());
 }
 
 fn serialize_sorted_jsonl(records: &[VacuumRecord]) -> Vec<String> {
@@ -43,7 +45,7 @@ mod tests {
 
     use crate::record::builder::VacuumRecord;
 
-    use super::{operator_manifest, serialize_sorted_jsonl, sorted_records};
+    use super::{operator_manifest, schema_manifest, serialize_sorted_jsonl, sorted_records};
 
     fn record(relative_path: &str, root: &str) -> VacuumRecord {
         let mut record = VacuumRecord::empty();
@@ -71,6 +73,33 @@ mod tests {
             manifest["pipeline"]["downstream"],
             serde_json::json!(["hash"])
         );
+    }
+
+    #[test]
+    fn schema_manifest_is_valid_json_with_required_record_fields() {
+        let schema: Value =
+            serde_json::from_str(schema_manifest()).expect("schema manifest should parse");
+
+        assert_eq!(
+            schema["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+        assert_eq!(schema["title"], "vacuum.v0");
+        assert!(
+            schema["required"]
+                .as_array()
+                .expect("required must be array")
+                .contains(&Value::from("tool_versions"))
+        );
+        assert!(
+            schema["required"]
+                .as_array()
+                .expect("required must be array")
+                .contains(&Value::from("relative_path"))
+        );
+        assert!(schema["properties"]["_skipped"].is_object());
+        assert!(schema["properties"]["_warnings"].is_object());
+        assert!(schema["properties"]["tool_versions"].is_object());
     }
 
     #[test]
