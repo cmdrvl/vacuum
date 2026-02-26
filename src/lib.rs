@@ -17,6 +17,11 @@ pub fn run() -> u8 {
         return witness::query::dispatch(command);
     }
 
+    if cli.version {
+        println!("vacuum {}", env!("CARGO_PKG_VERSION"));
+        return cli::exit::SCAN_COMPLETE;
+    }
+
     if cli.describe {
         output::jsonl::print_operator_stub();
         return cli::exit::SCAN_COMPLETE;
@@ -28,7 +33,13 @@ pub fn run() -> u8 {
     }
 
     if cli.roots.is_empty() {
-        refusal::payload::print_missing_roots();
+        let refusal = refusal::payload::empty_roots_refusal();
+        refusal::payload::emit(&refusal);
+        return cli::exit::REFUSAL;
+    }
+
+    if let Err(refusal) = walk::walker::validate_roots(&cli.roots) {
+        refusal::payload::emit(&refusal);
         return cli::exit::REFUSAL;
     }
 

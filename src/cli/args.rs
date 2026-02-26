@@ -9,6 +9,7 @@ use clap::{ArgAction, Parser, Subcommand};
     long_about = None
 )]
 #[command(args_conflicts_with_subcommands = true)]
+#[command(disable_version_flag = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -36,6 +37,9 @@ pub struct Cli {
 
     #[arg(long)]
     pub progress: bool,
+
+    #[arg(long)]
+    pub version: bool,
 }
 
 #[derive(Debug, Subcommand)]

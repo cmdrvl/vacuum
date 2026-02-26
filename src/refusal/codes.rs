@@ -13,4 +13,12 @@ impl RefusalCode {
             Self::Io => "E_IO",
         }
     }
+
+    pub fn message(self) -> &'static str {
+        match self {
+            Self::RootNotFound => "Root path does not exist",
+            Self::RootPermission => "Cannot read root directory",
+            Self::Io => "Filesystem error during scan",
+        }
+    }
 }
