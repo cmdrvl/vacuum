@@ -9,6 +9,13 @@ pub fn scan_roots(_roots: &[std::path::PathBuf], _follow_symlinks: bool) -> Vec<
 }
 
 pub fn validate_roots(roots: &[std::path::PathBuf]) -> Result<(), Refusal> {
+    if roots.is_empty() {
+        return Err(Refusal::new(
+            RefusalCode::RootNotFound,
+            json!({ "root": "" }),
+        ));
+    }
+
     for root in roots {
         validate_root(root)?;
     }
@@ -39,19 +46,28 @@ fn validate_root(root: &Path) -> Result<(), Refusal> {
 }
 
 fn refusal_from_io(root: &Path, error: io::Error) -> Refusal {
-    let code = match error.kind() {
-        io::ErrorKind::NotFound => RefusalCode::RootNotFound,
-        io::ErrorKind::PermissionDenied => RefusalCode::RootPermission,
-        _ => RefusalCode::Io,
-    };
-
-    Refusal::new(
-        code,
-        json!({
-            "root": root.display().to_string(),
-            "error": error.to_string(),
-        }),
-    )
+    match error.kind() {
+        io::ErrorKind::NotFound => Refusal::new(
+            RefusalCode::RootNotFound,
+            json!({
+                "root": root.display().to_string(),
+            }),
+        ),
+        io::ErrorKind::PermissionDenied => Refusal::new(
+            RefusalCode::RootPermission,
+            json!({
+                "root": root.display().to_string(),
+                "error": error.to_string(),
+            }),
+        ),
+        _ => Refusal::new(
+            RefusalCode::Io,
+            json!({
+                "root": root.display().to_string(),
+                "error": error.to_string(),
+            }),
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -60,6 +76,14 @@ mod tests {
 
     use super::validate_roots;
     use crate::refusal::codes::RefusalCode;
+
+    #[test]
+    fn empty_root_list_returns_not_found_refusal() {
+        let refusal = validate_roots(&[]).expect_err("empty roots should fail");
+
+        assert_eq!(refusal.code, RefusalCode::RootNotFound);
+        assert_eq!(refusal.detail["root"].as_str(), Some(""));
+    }
 
     #[test]
     fn missing_root_returns_not_found_refusal() {
@@ -71,6 +95,7 @@ mod tests {
             refusal.detail["root"].as_str(),
             Some("/definitely-missing-vacuum-root")
         );
+        assert!(refusal.detail["error"].is_null());
     }
 
     #[test]
