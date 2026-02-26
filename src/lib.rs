@@ -23,7 +23,7 @@ pub fn run() -> u8 {
     }
 
     if cli.describe {
-        output::jsonl::print_operator_stub();
+        output::jsonl::print_operator_manifest();
         return cli::exit::SCAN_COMPLETE;
     }
 

@@ -1,0 +1,85 @@
+{
+  "schema_version": "operator.v0",
+  "name": "vacuum",
+  "version": "0.1.0",
+  "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
+  "repository": "https://github.com/cmdrvl/vacuum",
+  "license": "MIT",
+  "invocation": {
+    "binary": "vacuum",
+    "output_mode": "stream",
+    "output_schema": "vacuum.v0",
+    "json_flag": null
+  },
+  "arguments": [
+    {
+      "name": "roots",
+      "type": "file_path[]",
+      "required": true,
+      "variadic": true,
+      "description": "Root directories to scan"
+    }
+  ],
+  "options": [
+    {
+      "name": "include",
+      "flag": "--include",
+      "type": "string",
+      "repeatable": true,
+      "description": "Include glob pattern"
+    },
+    {
+      "name": "exclude",
+      "flag": "--exclude",
+      "type": "string",
+      "repeatable": true,
+      "description": "Exclude glob pattern"
+    },
+    {
+      "name": "no_follow",
+      "flag": "--no-follow",
+      "type": "boolean",
+      "description": "Do not follow symlinks"
+    }
+  ],
+  "exit_codes": {
+    "0": {
+      "meaning": "SCAN_COMPLETE",
+      "domain": "positive"
+    },
+    "2": {
+      "meaning": "REFUSAL",
+      "domain": "error"
+    }
+  },
+  "refusals": [
+    {
+      "code": "E_ROOT_NOT_FOUND",
+      "message": "Root path doesn't exist",
+      "action": "escalate"
+    },
+    {
+      "code": "E_ROOT_PERMISSION",
+      "message": "Can't read root",
+      "action": "escalate"
+    },
+    {
+      "code": "E_IO",
+      "message": "Filesystem error during scan",
+      "action": "escalate"
+    }
+  ],
+  "capabilities": {
+    "formats": [
+      "*"
+    ],
+    "profile_aware": false,
+    "streaming": true
+  },
+  "pipeline": {
+    "upstream": [],
+    "downstream": [
+      "hash"
+    ]
+  }
+}
