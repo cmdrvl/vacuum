@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use serde::Serialize;
+use serde_json::Value;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct VacuumRecord {
     pub version: &'static str,
     pub path: String,
@@ -10,7 +13,19 @@ pub struct VacuumRecord {
     pub mtime: Option<String>,
     pub extension: Option<String>,
     pub mime_guess: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _skipped: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub _warnings: Option<Vec<Warning>>,
     pub tool_versions: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Warning {
+    pub tool: String,
+    pub code: String,
+    pub message: String,
+    pub detail: Value,
 }
 
 impl VacuumRecord {
@@ -27,6 +42,8 @@ impl VacuumRecord {
             mtime: None,
             extension: None,
             mime_guess: None,
+            _skipped: None,
+            _warnings: None,
             tool_versions,
         }
     }

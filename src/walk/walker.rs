@@ -6,11 +6,11 @@ use std::{
 
 use chrono::{SecondsFormat, Utc};
 use serde_json::json;
-use walkdir::WalkDir;
+use walkdir::{Error as WalkdirError, WalkDir};
 
 use crate::{
     record::{
-        builder::VacuumRecord,
+        builder::{VacuumRecord, Warning},
         mime::guess_from_extension,
         path::{native_string, normalize_relative},
     },
@@ -27,16 +27,27 @@ pub fn scan_roots(roots: &[PathBuf], follow_symlinks: bool) -> Vec<VacuumRecord>
         for entry in WalkDir::new(&absolute_root)
             .follow_links(follow_symlinks)
             .into_iter()
-            .filter_map(Result::ok)
         {
-            if entry.depth() == 0 || entry.file_type().is_dir() {
-                continue;
-            }
+            match entry {
+                Ok(entry) => {
+                    if entry.depth() == 0 || entry.file_type().is_dir() {
+                        continue;
+                    }
 
-            if let Some(record) =
-                build_record(&absolute_root, &root_value, entry.path(), follow_symlinks)
-            {
-                records.push(record);
+                    records.push(build_record(
+                        &absolute_root,
+                        &root_value,
+                        entry.path(),
+                        follow_symlinks,
+                    ));
+                }
+                Err(error) => {
+                    if let Some(skipped) =
+                        build_skipped_from_walk_error(&absolute_root, &root_value, &error)
+                    {
+                        records.push(skipped);
+                    }
+                }
             }
         }
     }
@@ -63,13 +74,7 @@ fn build_record(
     root_value: &str,
     entry_path: &Path,
     follow_symlinks: bool,
-) -> Option<VacuumRecord> {
-    let metadata = if follow_symlinks {
-        fs::metadata(entry_path).ok()?
-    } else {
-        fs::symlink_metadata(entry_path).ok()?
-    };
-
+) -> VacuumRecord {
     let relative_path = match entry_path.strip_prefix(root) {
         Ok(relative) => normalize_relative(relative),
         Err(_) => normalize_relative(entry_path),
@@ -80,28 +85,92 @@ fn build_record(
         .map(|value| format!(".{}", value.to_string_lossy()));
     let mime_guess = guess_from_extension(extension.as_deref()).map(str::to_string);
 
-    let output_path = if follow_symlinks {
-        fs::canonicalize(entry_path).unwrap_or_else(|_| entry_path.to_path_buf())
-    } else {
-        entry_path.to_path_buf()
-    };
+    let path_value = native_string(entry_path);
 
     let mut record = VacuumRecord::empty();
-    record.path = native_string(&output_path);
+    record.path = path_value;
     record.relative_path = relative_path;
     record.root = root_value.to_string();
-    record.size = Some(metadata.len());
-    record.mtime = format_mtime(metadata.modified().ok());
     record.extension = extension;
     record.mime_guess = mime_guess;
 
-    Some(record)
+    let metadata = if follow_symlinks {
+        fs::metadata(entry_path)
+    } else {
+        fs::symlink_metadata(entry_path)
+    };
+
+    match metadata {
+        Ok(metadata) => {
+            let output_path = if follow_symlinks {
+                fs::canonicalize(entry_path).unwrap_or_else(|_| entry_path.to_path_buf())
+            } else {
+                entry_path.to_path_buf()
+            };
+            record.path = native_string(&output_path);
+            record.size = Some(metadata.len());
+            record.mtime = format_mtime(metadata.modified().ok());
+        }
+        Err(error) => {
+            record._skipped = Some(true);
+            record._warnings = Some(vec![io_warning(
+                format!("Cannot read file metadata: {error}"),
+                error.to_string(),
+            )]);
+        }
+    }
+
+    record
 }
 
 fn format_mtime(value: Option<SystemTime>) -> Option<String> {
     value.map(|mtime| {
         chrono::DateTime::<Utc>::from(mtime).to_rfc3339_opts(SecondsFormat::Millis, true)
     })
+}
+
+fn build_skipped_from_walk_error(
+    root: &Path,
+    root_value: &str,
+    error: &WalkdirError,
+) -> Option<VacuumRecord> {
+    let path = error.path()?;
+    if path == root {
+        return None;
+    }
+
+    let relative_path = match path.strip_prefix(root) {
+        Ok(relative) => normalize_relative(relative),
+        Err(_) => normalize_relative(path),
+    };
+
+    let extension = path
+        .extension()
+        .map(|value| format!(".{}", value.to_string_lossy()));
+    let mime_guess = guess_from_extension(extension.as_deref()).map(str::to_string);
+
+    let mut record = VacuumRecord::empty();
+    record.path = native_string(path);
+    record.relative_path = relative_path;
+    record.root = root_value.to_string();
+    record.extension = extension;
+    record.mime_guess = mime_guess;
+    record._skipped = Some(true);
+    record._warnings = Some(vec![io_warning(
+        format!("Cannot read directory entry: {error}"),
+        error.to_string(),
+    )]);
+
+    Some(record)
+}
+
+fn io_warning(message: String, error: String) -> Warning {
+    Warning {
+        tool: "vacuum".to_string(),
+        code: "E_IO".to_string(),
+        message,
+        detail: json!({ "error": error }),
+    }
 }
 
 fn absolute_root(root: &Path) -> PathBuf {
