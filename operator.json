@@ -5,6 +5,7 @@
   "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
   "repository": "https://github.com/cmdrvl/vacuum",
   "license": "MIT",
+  "agent_guide": "https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md",
   "invocation": {
     "binary": "vacuum",
     "output_mode": "stream",

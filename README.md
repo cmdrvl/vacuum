@@ -381,6 +381,8 @@ Extension-based lookup from a built-in table: `.csv`, `.tsv`, `.txt`, `.json`, `
 
 ## Agent / CI Integration
 
+For the full toolchain guide, see the [Agent Operator Guide](https://github.com/cmdrvl/.github/blob/main/profile/AGENT_PROMPT.md).
+
 ### Self-describing contract
 
 ```bash
