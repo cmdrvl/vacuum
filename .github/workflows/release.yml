@@ -42,7 +42,7 @@ jobs:
         id: version
         shell: bash
         run: |
-          VERSION="$(sed -n 's/^version = \"\\(.*\\)\"$/\\1/p' Cargo.toml | head -n1)"
+          VERSION=$(python3 -c "import tomllib; from pathlib import Path; print(tomllib.loads(Path('Cargo.toml').read_text())['package']['version'])")
           if [[ -z "$VERSION" ]]; then
             echo "Failed to read version from Cargo.toml" >&2
             exit 1
