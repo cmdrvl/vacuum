@@ -6,9 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub release](https://img.shields.io/github/v/release/cmdrvl/vacuum)](https://github.com/cmdrvl/vacuum/releases)
 
-**Artifact inventory — deterministic directory scanning that produces a sorted JSONL manifest of every file, its size, timestamp, and MIME type.**
-
-No AI. No inference. Pure deterministic enumeration and serialization.
+**Know what's there before you touch anything.**
 
 ```bash
 brew install cmdrvl/tap/vacuum
@@ -18,23 +16,16 @@ brew install cmdrvl/tap/vacuum
 
 ---
 
-## TL;DR
+You receive a data delivery. 47 files in a directory — CSVs, Excel workbooks, PDFs, a stray `.tmp` someone forgot to delete. Before you can hash them, fingerprint them, or lock them down, you need the answer to the simplest question in data: *what's actually there?*
 
-**The Problem**: Before you can hash, fingerprint, or lock data artifacts, you need to know what's there. Teams rely on `find`, `ls`, or ad-hoc scripts that produce inconsistent, non-reproducible inventories with no structured output.
+**vacuum walks directories and emits a deterministic JSONL manifest — the same files in, the same manifest out, every time.** Each file gets a record with its path, size, modification time, and MIME type. No content reading, no transformation, no heuristics. Just enumeration — the reliable starting point for everything downstream.
 
-**The Solution**: One command that walks directories and emits a deterministic, sorted JSONL manifest. Every file gets a record with path, size, mtime, extension, and MIME guess. Same inputs always produce the same output.
+### What makes this different
 
-### Why Use vacuum?
-
-| Feature | What It Does |
-|---------|--------------|
-| **Deterministic** | Sorted by `(relative_path, root)` — same directory always produces the same manifest |
-| **Structured JSONL** | Every record is a machine-readable JSON object — no parsing `ls` output |
-| **Skipped tracking** | Files that can't be stat'd are captured with warnings, not silently dropped |
-| **Multi-root** | Scan multiple directories in one invocation — records interleaved deterministically |
-| **Include/Exclude** | Glob patterns filter what enters the manifest |
-| **Pipeline native** | Feeds directly into `hash`, `fingerprint`, `lock` |
-| **Audit trail** | Every run recorded in the ambient witness ledger |
+- **Deterministic by construction** — records sorted by `(relative_path, root)` byte-order. Same directory always produces byte-identical output.
+- **Multi-root scanning** — scan `/data/q3` and `/data/q4` in one invocation; records from all roots interleave deterministically in a single manifest.
+- **Nothing is silently dropped** — files that can't be stat'd produce `_skipped` records with warnings, not silent omissions.
+- **Pipeline native** — JSONL output feeds directly into `hash`, `fingerprint`, and `lock` via Unix pipes.
 
 ---
 
