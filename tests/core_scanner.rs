@@ -129,6 +129,31 @@ fn mime_mapping_and_path_normalization_are_present_in_records() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn literal_backslashes_in_filenames_are_not_reinterpreted_as_separators() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join(r"literal\slash.csv"), "a,b\n1,2\n").unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .arg(tmp.path())
+        .output()
+        .expect("vacuum binary should run");
+    assert!(output.status.success(), "scan should exit 0");
+
+    let rows = parse_json_lines(&output.stdout);
+    let row = rows
+        .iter()
+        .find(|row| row["relative_path"] == r"literal\slash.csv")
+        .expect("literal backslash filename should be preserved");
+
+    assert!(
+        row["path"]
+            .as_str()
+            .is_some_and(|value| value.ends_with(r"literal\slash.csv"))
+    );
+}
+
 #[test]
 fn missing_root_refuses_with_exit_two() {
     let missing_root = PathBuf::from("/definitely-missing-vacuum-root-core-suite");

@@ -13,14 +13,14 @@ pub fn apply_filters(
     records
         .into_iter()
         .filter(|record| {
-            let candidate = normalize_relative(&record.relative_path);
+            let candidate = record.relative_path.as_str();
 
             let include_match = if include.is_empty() {
                 true
             } else {
                 include_set
                     .as_ref()
-                    .map(|set| set.is_match(&candidate))
+                    .map(|set| set.is_match(candidate))
                     .unwrap_or(false)
             };
 
@@ -33,7 +33,7 @@ pub fn apply_filters(
             } else {
                 exclude_set
                     .as_ref()
-                    .map(|set| set.is_match(&candidate))
+                    .map(|set| set.is_match(candidate))
                     .unwrap_or(false)
             };
 
@@ -63,11 +63,6 @@ fn compile_globset(patterns: &[String]) -> Option<GlobSet> {
 
     builder.build().ok()
 }
-
-fn normalize_relative(path: &str) -> String {
-    path.replace('\\', "/")
-}
-
 #[cfg(test)]
 mod tests {
     use crate::record::builder::VacuumRecord;
@@ -111,12 +106,22 @@ mod tests {
     }
 
     #[test]
-    fn matching_uses_forward_slash_normalized_relative_path() {
-        let records = vec![record("nested\\inner\\file.csv")];
+    fn matching_uses_record_relative_path_directly() {
+        let records = vec![record("nested/inner/file.csv")];
         let include = vec!["nested/**/*.csv".to_string()];
         let filtered = apply_filters(records, &include, &[]);
 
         assert_eq!(filtered.len(), 1);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn literal_backslashes_are_not_treated_as_separators() {
+        let records = vec![record(r"nested\inner\file.csv")];
+        let include = vec!["nested/**/*.csv".to_string()];
+        let filtered = apply_filters(records, &include, &[]);
+
+        assert!(filtered.is_empty());
     }
 
     #[test]

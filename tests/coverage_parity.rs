@@ -186,7 +186,7 @@ filter_case_tests! {
     filter_case_08: "c1/file.csv", ["[ab]1/file.csv"], [], false;
     filter_case_09: "report.json", ["*.json", "*.csv"], [], true;
     filter_case_10: "report.txt", ["*.json", "*.csv"], [], false;
-    filter_case_11: "dir\\leaf.csv", ["dir/*.csv"], [], true;
+    filter_case_11: "dir\\leaf.csv", ["dir/*.csv"], [], false;
     filter_case_12: "deep/tree/leaf.yaml", ["**/*.yaml"], [], true;
     filter_case_13: "deep/tree/leaf.yaml", ["*.yaml"], [], false;
     filter_case_14: "mix/data.parquet", ["mix/*.parquet"], [], true;
@@ -202,7 +202,7 @@ filter_case_tests! {
     filter_case_24: "deep/tree/leaf.yaml", ["**/*.yaml"], ["deep/**"], false;
     filter_case_25: "deep/tree/leaf.yaml", ["**/*.yaml"], ["other/**"], true;
     filter_case_26: "nested\\inner\\leaf.csv", ["nested/**/*.csv"], ["nested/**/leaf.csv"], false;
-    filter_case_27: "nested\\inner\\leaf.csv", ["nested/**/*.csv"], ["nested/**/other.csv"], true;
+    filter_case_27: "nested\\inner\\leaf.csv", ["nested/**/*.csv"], ["nested/**/other.csv"], false;
     filter_case_28: "x/file.csv", [], ["x/*"], false;
     filter_case_29: "x/file.csv", [], ["y/*"], true;
     filter_case_30: "x/file.csv", [], [], true;
