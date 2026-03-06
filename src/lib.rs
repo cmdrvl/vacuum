@@ -36,38 +36,68 @@ pub fn run() -> u8 {
 
     if cli.roots.is_empty() {
         let refusal = refusal::payload::empty_roots_refusal();
-        refusal::payload::emit(&refusal);
-        append_witness_record(cli.no_witness, cli.progress, "REFUSAL", cli::exit::REFUSAL);
+        let rendered = refusal::payload::render(&refusal);
+        println!("{rendered}");
+        append_witness_record(
+            &cli,
+            "REFUSAL",
+            cli::exit::REFUSAL,
+            hash_bytes(format!("{rendered}\n").as_bytes()),
+        );
         return cli::exit::REFUSAL;
     }
 
     if let Err(refusal) = walk::walker::validate_roots(&cli.roots) {
-        refusal::payload::emit(&refusal);
-        append_witness_record(cli.no_witness, cli.progress, "REFUSAL", cli::exit::REFUSAL);
+        let rendered = refusal::payload::render(&refusal);
+        println!("{rendered}");
+        append_witness_record(
+            &cli,
+            "REFUSAL",
+            cli::exit::REFUSAL,
+            hash_bytes(format!("{rendered}\n").as_bytes()),
+        );
         return cli::exit::REFUSAL;
     }
 
     let scanned = walk::walker::scan_roots_with_progress(&cli.roots, !cli.no_follow, cli.progress);
     let filtered = walk::filter::apply_filters(scanned, &cli.include, &cli.exclude);
-    output::jsonl::emit_records(&filtered);
-    append_witness_record(
-        cli.no_witness,
-        cli.progress,
-        "SCAN_COMPLETE",
-        cli::exit::SCAN_COMPLETE,
-    );
+    let rendered_lines = output::jsonl::serialize_sorted_jsonl(&filtered);
+    for line in &rendered_lines {
+        println!("{line}");
+    }
+    let output_bytes = rendered_lines
+        .iter()
+        .flat_map(|line| {
+            line.as_bytes()
+                .iter()
+                .copied()
+                .chain(std::iter::once(b'\n'))
+        })
+        .collect::<Vec<_>>();
+    let output_hash = hash_bytes(&output_bytes);
+    append_witness_record(&cli, "SCAN_COMPLETE", cli::exit::SCAN_COMPLETE, output_hash);
 
     cli::exit::SCAN_COMPLETE
 }
 
-fn append_witness_record(no_witness: bool, progress_enabled: bool, outcome: &str, exit_code: u8) {
-    if no_witness {
+fn append_witness_record(cli: &cli::args::Cli, outcome: &str, exit_code: u8, output_hash: String) {
+    if cli.no_witness {
         return;
     }
 
-    let record = witness::record::WitnessRecord::new(outcome, exit_code);
+    let mut record = witness::record::WitnessRecord::from_run(
+        &cli.roots,
+        &cli.include,
+        &cli.exclude,
+        cli.no_follow,
+        outcome,
+        exit_code,
+        output_hash,
+        witness::ledger::read_prev(),
+    );
+    record.compute_id();
     if let Err(error) = witness::ledger::append(&record) {
-        emit_witness_warning(progress_enabled, &error);
+        emit_witness_warning(cli.progress, &error);
     }
 }
 
@@ -82,4 +112,8 @@ fn emit_witness_warning(progress_enabled: bool, error: &std::io::Error) {
     } else {
         eprintln!("vacuum: witness append failed: {error}");
     }
+}
+
+fn hash_bytes(bytes: &[u8]) -> String {
+    format!("blake3:{}", blake3::hash(bytes).to_hex())
 }

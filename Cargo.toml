@@ -10,6 +10,7 @@ serde_json = "=1.0.143"
 walkdir = "=2.5.0"
 chrono = "=0.4.41"
 globset = "=0.4.16"
+blake3 = "=1.8.2"
 
 [dev-dependencies]
 tempfile = "=3.21.0"

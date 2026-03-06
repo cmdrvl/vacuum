@@ -22,7 +22,7 @@ pub fn print_schema_manifest() {
     println!("{}", schema_manifest().trim_end());
 }
 
-fn serialize_sorted_jsonl(records: &[VacuumRecord]) -> Vec<String> {
+pub(crate) fn serialize_sorted_jsonl(records: &[VacuumRecord]) -> Vec<String> {
     sorted_records(records)
         .into_iter()
         .filter_map(|record| serde_json::to_string(&record).ok())

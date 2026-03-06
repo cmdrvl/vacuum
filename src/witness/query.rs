@@ -152,10 +152,7 @@ fn read_entries() -> Result<Vec<LedgerEntry>, std::io::Error> {
         .lines()
         .filter_map(|line| {
             let value = serde_json::from_str::<Value>(line).ok()?;
-            Some(LedgerEntry {
-                raw: line.to_string(),
-                value,
-            })
+            Some(LedgerEntry { value })
         })
         .collect())
 }
@@ -184,7 +181,6 @@ struct QueryFilter {
 }
 
 struct LedgerEntry {
-    raw: String,
     value: Value,
 }
 
@@ -215,11 +211,29 @@ impl LedgerEntry {
         }
 
         if let Some(input_hash) = filter.input_hash.as_deref()
-            && !self.raw.contains(input_hash)
+            && !matches_input_hash(&self.value, input_hash)
         {
             return false;
         }
 
         true
     }
+}
+
+fn matches_input_hash(value: &Value, needle: &str) -> bool {
+    value
+        .get("inputs")
+        .and_then(Value::as_array)
+        .is_some_and(|inputs| {
+            inputs.iter().any(|input| {
+                input
+                    .get("hash")
+                    .and_then(Value::as_str)
+                    .is_some_and(|hash| hash.contains(needle))
+            })
+        })
+        || value
+            .get("input_hash")
+            .and_then(Value::as_str)
+            .is_some_and(|hash| hash.contains(needle))
 }

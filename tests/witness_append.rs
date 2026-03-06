@@ -29,9 +29,33 @@ fn successful_scan_appends_witness_record_by_default() {
     assert!(output.status.success(), "scan should exit 0");
     let lines = read_witness_lines(&witness_path);
     assert_eq!(lines.len(), 1);
-    assert_eq!(lines[0]["tool"], "vacuum");
-    assert_eq!(lines[0]["outcome"], "SCAN_COMPLETE");
-    assert_eq!(lines[0]["exit_code"], 0);
+    let record = &lines[0];
+    assert!(
+        record["id"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
+    assert_eq!(record["tool"], "vacuum");
+    assert_eq!(record["version"], env!("CARGO_PKG_VERSION"));
+    assert!(
+        record["binary_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
+    assert_eq!(record["outcome"], "SCAN_COMPLETE");
+    assert_eq!(record["exit_code"], 0);
+    assert_eq!(
+        record["inputs"][0]["path"],
+        fixture("simple").to_string_lossy().as_ref()
+    );
+    assert!(record["inputs"][0]["hash"].is_null());
+    assert!(record["inputs"][0]["bytes"].is_null());
+    assert!(record["prev"].is_null());
+    assert!(
+        record["output_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
 }
 
 #[test]
@@ -51,6 +75,36 @@ fn refusal_run_appends_refusal_witness_record() {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0]["outcome"], "REFUSAL");
     assert_eq!(lines[0]["exit_code"], 2);
+    assert_eq!(
+        lines[0]["inputs"][0]["path"],
+        missing_root.to_string_lossy().as_ref()
+    );
+    assert!(
+        lines[0]["output_hash"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("blake3:"))
+    );
+}
+
+#[test]
+fn consecutive_runs_chain_prev_ids() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let witness_path = temp_dir.path().join("witness.jsonl");
+    let root = fixture("simple");
+
+    for _ in 0..2 {
+        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+            .arg(&root)
+            .env("EPISTEMIC_WITNESS", &witness_path)
+            .output()
+            .expect("vacuum binary should run");
+        assert!(output.status.success(), "scan should exit 0");
+    }
+
+    let lines = read_witness_lines(&witness_path);
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0]["prev"].is_null());
+    assert_eq!(lines[1]["prev"], lines[0]["id"]);
 }
 
 #[test]

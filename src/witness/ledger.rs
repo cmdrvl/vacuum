@@ -1,12 +1,12 @@
 use std::{
     env,
     ffi::OsString,
-    fs::{self, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Write,
     path::PathBuf,
 };
 
-use crate::witness::record::WitnessRecord;
+use crate::witness::record::{WitnessRecord, canonical_json};
 
 pub fn append(record: &WitnessRecord) -> std::io::Result<()> {
     let path = resolve_ledger_path();
@@ -15,7 +15,7 @@ pub fn append(record: &WitnessRecord) -> std::io::Result<()> {
     }
 
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    let encoded = serde_json::to_string(record).map_err(std::io::Error::other)?;
+    let encoded = canonical_json(record);
     writeln!(file, "{encoded}")?;
     Ok(())
 }
@@ -42,6 +42,24 @@ where
     }
 
     PathBuf::from(".epistemic").join("witness.jsonl")
+}
+
+pub fn read_prev() -> Option<String> {
+    let path = resolve_ledger_path();
+    let file = File::open(path).ok()?;
+    let reader = std::io::BufReader::new(file);
+
+    let mut last_non_empty = None;
+    for line in std::io::BufRead::lines(reader).map_while(Result::ok) {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() {
+            last_non_empty = Some(trimmed.to_owned());
+        }
+    }
+
+    let last = last_non_empty?;
+    let value: serde_json::Value = serde_json::from_str(&last).ok()?;
+    value.get("id")?.as_str().map(ToOwned::to_owned)
 }
 
 #[cfg(test)]

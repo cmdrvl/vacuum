@@ -31,6 +31,10 @@ struct RefusalBody<'a> {
 }
 
 pub fn emit(refusal: &Refusal) {
+    println!("{}", render(refusal));
+}
+
+pub fn render(refusal: &Refusal) -> String {
     let envelope = RefusalEnvelope {
         version: "vacuum.v0",
         outcome: "REFUSAL",
@@ -43,10 +47,10 @@ pub fn emit(refusal: &Refusal) {
     };
 
     match serde_json::to_string(&envelope) {
-        Ok(encoded) => println!("{encoded}"),
+        Ok(encoded) => encoded,
         Err(error) => {
             eprintln!("vacuum: failed to encode refusal envelope: {error}");
-            let fallback = json!({
+            json!({
                 "version": "vacuum.v0",
                 "outcome": "REFUSAL",
                 "refusal": {
@@ -55,8 +59,8 @@ pub fn emit(refusal: &Refusal) {
                     "detail": {"error": "refusal_encoding_failure"},
                     "next_command": null
                 }
-            });
-            println!("{fallback}");
+            })
+            .to_string()
         }
     }
 }
