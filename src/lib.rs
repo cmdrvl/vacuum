@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+use std::ffi::OsString;
+
 use serde_json::json;
 
 pub mod cli;
@@ -10,28 +12,29 @@ pub mod walk;
 pub mod witness;
 
 pub fn run() -> u8 {
+    if let Some(display_mode) = detect_display_mode(std::env::args_os()) {
+        return handle_display_mode(display_mode);
+    }
+
     let cli = match cli::args::parse() {
         Ok(cli) => cli,
         Err(error) => return cli::exit::from_clap_error(error),
     };
 
-    if let Some(command) = cli.command.as_ref() {
-        return witness::query::dispatch(command);
-    }
-
     if cli.version {
-        println!("vacuum {}", env!("CARGO_PKG_VERSION"));
-        return cli::exit::SCAN_COMPLETE;
+        return handle_display_mode(DisplayMode::Version);
     }
 
     if cli.describe {
-        output::jsonl::print_operator_manifest();
-        return cli::exit::SCAN_COMPLETE;
+        return handle_display_mode(DisplayMode::Describe);
     }
 
     if cli.schema {
-        output::jsonl::print_schema_manifest();
-        return cli::exit::SCAN_COMPLETE;
+        return handle_display_mode(DisplayMode::Schema);
+    }
+
+    if let Some(command) = cli.command.as_ref() {
+        return witness::query::dispatch(command);
     }
 
     if cli.roots.is_empty() {
@@ -116,4 +119,41 @@ fn emit_witness_warning(progress_enabled: bool, error: &std::io::Error) {
 
 fn hash_bytes(bytes: &[u8]) -> String {
     format!("blake3:{}", blake3::hash(bytes).to_hex())
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DisplayMode {
+    Version,
+    Describe,
+    Schema,
+}
+
+fn detect_display_mode<I, T>(args: I) -> Option<DisplayMode>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<OsString>,
+{
+    let args = args.into_iter().map(Into::into).collect::<Vec<OsString>>();
+
+    if args.iter().skip(1).any(|arg| arg == "--version") {
+        Some(DisplayMode::Version)
+    } else if args.iter().skip(1).any(|arg| arg == "--describe") {
+        Some(DisplayMode::Describe)
+    } else if args.iter().skip(1).any(|arg| arg == "--schema") {
+        Some(DisplayMode::Schema)
+    } else {
+        None
+    }
+}
+
+fn handle_display_mode(mode: DisplayMode) -> u8 {
+    match mode {
+        DisplayMode::Version => {
+            println!("vacuum {}", env!("CARGO_PKG_VERSION"));
+        }
+        DisplayMode::Describe => output::jsonl::print_operator_manifest(),
+        DisplayMode::Schema => output::jsonl::print_schema_manifest(),
+    }
+
+    cli::exit::SCAN_COMPLETE
 }

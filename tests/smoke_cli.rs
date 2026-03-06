@@ -54,6 +54,44 @@ fn cli_smoke_flags_and_manifest_parse() {
 }
 
 #[test]
+fn display_flags_short_circuit_before_invalid_witness_args_are_parsed() {
+    let version = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["--version", "witness", "query", "--limit", "nope"])
+        .output()
+        .expect("version command should run");
+    assert_eq!(version.status.code(), Some(0));
+    assert!(
+        String::from_utf8(version.stdout)
+            .expect("version stdout should be utf-8")
+            .starts_with("vacuum ")
+    );
+    assert!(version.stderr.is_empty(), "version should not emit stderr");
+
+    let describe = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["--describe", "witness", "query", "--limit", "nope"])
+        .output()
+        .expect("describe command should run");
+    assert_eq!(describe.status.code(), Some(0));
+    let describe_json: Value =
+        serde_json::from_slice(&describe.stdout).expect("describe output should parse");
+    assert_eq!(describe_json["schema_version"], "operator.v0");
+    assert!(
+        describe.stderr.is_empty(),
+        "describe should not emit stderr"
+    );
+
+    let schema = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["--schema", "witness", "query", "--limit", "nope"])
+        .output()
+        .expect("schema command should run");
+    assert_eq!(schema.status.code(), Some(0));
+    let schema_json: Value =
+        serde_json::from_slice(&schema.stdout).expect("schema output should parse");
+    assert_eq!(schema_json["title"], "vacuum.v0");
+    assert!(schema.stderr.is_empty(), "schema should not emit stderr");
+}
+
+#[test]
 fn cli_smoke_refusal_exit_code() {
     let missing = fixture("does-not-exist");
     let refusal = Command::new(env!("CARGO_BIN_EXE_vacuum"))
