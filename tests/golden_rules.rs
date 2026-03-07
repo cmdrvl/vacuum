@@ -5,5 +5,13 @@ golden_rules_suite! {
     binary: env!("CARGO_BIN_EXE_vacuum"),
     operator_json: include_str!("../operator.json"),
     source_files: &["src/refusal/codes.rs", "src/walk/walker.rs"],
+    fixture_success_args: &[
+        "tests/fixtures/simple",
+        "--no-witness",
+    ],
+    fixture_refusal_args: &[
+        "/nonexistent/directory",
+        "--no-witness",
+    ],
     exit_code_1_required: false,
 }
