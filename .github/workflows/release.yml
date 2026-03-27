@@ -181,3 +181,126 @@ jobs:
             release/**/*.zip
             release/**/*.spdx.json
             release/SHA256SUMS
+
+  update-homebrew:
+    name: Update Homebrew tap
+    needs:
+      - validate-version
+      - publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download SHA256SUMS from release
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.validate-version.outputs.release_tag }}"
+          curl -fsSL "https://github.com/cmdrvl/vacuum/releases/download/${version}/SHA256SUMS" -o SHA256SUMS
+
+      - name: Generate formula
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.validate-version.outputs.release_tag }}"
+          bare_version="${{ needs.validate-version.outputs.release_version }}"
+
+          export VACUUM_VERSION="${version}"
+          export VACUUM_BARE_VERSION="${bare_version}"
+          export SHA256_AARCH64_APPLE_DARWIN="$(awk '/vacuum-'"${version}"'-aarch64-apple-darwin.tar.gz$/ { print $1 }' SHA256SUMS)"
+          export SHA256_X86_64_APPLE_DARWIN="$(awk '/vacuum-'"${version}"'-x86_64-apple-darwin.tar.gz$/ { print $1 }' SHA256SUMS)"
+          export SHA256_AARCH64_UNKNOWN_LINUX_GNU="$(awk '/vacuum-'"${version}"'-aarch64-unknown-linux-gnu.tar.gz$/ { print $1 }' SHA256SUMS)"
+          export SHA256_X86_64_UNKNOWN_LINUX_GNU="$(awk '/vacuum-'"${version}"'-x86_64-unknown-linux-gnu.tar.gz$/ { print $1 }' SHA256SUMS)"
+
+          python3 -c '
+          import os
+          import textwrap
+          from pathlib import Path
+
+          checksums = {
+              "SHA256_AARCH64_APPLE_DARWIN": os.environ["SHA256_AARCH64_APPLE_DARWIN"],
+              "SHA256_X86_64_APPLE_DARWIN": os.environ["SHA256_X86_64_APPLE_DARWIN"],
+              "SHA256_AARCH64_UNKNOWN_LINUX_GNU": os.environ["SHA256_AARCH64_UNKNOWN_LINUX_GNU"],
+              "SHA256_X86_64_UNKNOWN_LINUX_GNU": os.environ["SHA256_X86_64_UNKNOWN_LINUX_GNU"],
+          }
+          for name, value in checksums.items():
+              if not value:
+                  raise SystemExit(f"missing checksum for {name}")
+
+          version = os.environ["VACUUM_VERSION"]
+          bare_version = os.environ["VACUUM_BARE_VERSION"]
+          formula = f"""# typed: false
+          # frozen_string_literal: true
+
+          class Vacuum < Formula
+            desc "Inventory artifacts into deterministic JSONL manifests"
+            homepage "https://github.com/cmdrvl/vacuum"
+            version "{bare_version}"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/cmdrvl/vacuum/releases/download/{version}/vacuum-{version}-aarch64-apple-darwin.tar.gz"
+                sha256 "{checksums["SHA256_AARCH64_APPLE_DARWIN"]}"
+              end
+              on_intel do
+                url "https://github.com/cmdrvl/vacuum/releases/download/{version}/vacuum-{version}-x86_64-apple-darwin.tar.gz"
+                sha256 "{checksums["SHA256_X86_64_APPLE_DARWIN"]}"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "https://github.com/cmdrvl/vacuum/releases/download/{version}/vacuum-{version}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "{checksums["SHA256_AARCH64_UNKNOWN_LINUX_GNU"]}"
+              end
+              on_intel do
+                url "https://github.com/cmdrvl/vacuum/releases/download/{version}/vacuum-{version}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "{checksums["SHA256_X86_64_UNKNOWN_LINUX_GNU"]}"
+              end
+            end
+
+            def install
+              bin.install "vacuum"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{{bin}}/vacuum --version")
+            end
+          end
+          """
+          Path("vacuum.rb").write_text(textwrap.dedent(formula).lstrip())
+          '
+
+      - name: Warn when Homebrew tap token is missing
+        if: ${{ env.HOMEBREW_TAP_TOKEN == '' }}
+        run: echo "::warning::HOMEBREW_TAP_TOKEN is not set; skipping cmdrvl/homebrew-tap update."
+
+      - name: Push formula to tap
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.validate-version.outputs.release_tag }}"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/cmdrvl/homebrew-tap.git" tap
+          mkdir -p tap/Formula
+          cp vacuum.rb tap/Formula/vacuum.rb
+
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/vacuum.rb
+
+          if git diff --cached --quiet; then
+            echo "No changes to formula"
+            exit 0
+          fi
+
+          git commit -m "vacuum ${version}"
+          git push origin HEAD:main
+          git push origin HEAD:master
