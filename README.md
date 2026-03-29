@@ -328,6 +328,35 @@ vacuum /data --include "subdir/*.csv"
 
 ---
 
+## S3 Scanning
+
+vacuum includes an `s3-to-vacuum` adapter script that converts `aws s3 ls` output into `vacuum.v0` JSONL, enabling S3 prefix scanning without native AWS SDK dependencies.
+
+```bash
+# Scan an S3 prefix
+scripts/s3-to-vacuum s3://my-bucket/data/2025/
+
+# Multiple prefixes
+scripts/s3-to-vacuum s3://bucket/q3/ s3://bucket/q4/
+
+# Check delivery completeness before downloading (with fingerprint struct-check)
+scripts/s3-to-vacuum s3://bucket/delivery/ \
+  | fingerprint struct-check --rules package.sf.yaml
+
+# If complete, pull down and run full pipeline locally
+aws s3 sync s3://bucket/delivery/ /data/q3/
+vacuum /data/q3 | hash | fingerprint --fp appraisal.v1 \
+  | lock --dataset-id q3 > q3.lock.json
+```
+
+**Requirements:** `aws` CLI (authenticated) and `jq`.
+
+The adapter emits identical `vacuum.v0` records — `path` uses `s3://` URIs, `relative_path` is the key minus prefix, and all downstream tools that consume `vacuum.v0` work unchanged. Records are deterministically sorted by `(relative_path, root)`.
+
+**Note:** The full `vacuum → hash → fingerprint → lock` pipeline requires local files (hash reads file contents). The S3 adapter is designed for inventory and completeness checking — use `aws s3 sync` before running the content pipeline.
+
+---
+
 ## Limitations
 
 | Limitation | Detail |
