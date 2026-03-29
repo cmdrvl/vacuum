@@ -119,12 +119,16 @@ jobs:
           TARGET="${{ matrix.target }}"
           ARTIFACT="vacuum-${TAG}-${TARGET}"
 
+          STAGING="staging-${TARGET}"
+          mkdir -p "$STAGING"
+
           if [[ "$TARGET" == *"windows"* ]]; then
-            BIN_PATH="target/$TARGET/release/${BIN_NAME}.exe"
-            7z a "dist/${ARTIFACT}.zip" "$BIN_PATH" >/dev/null
+            cp "target/$TARGET/release/${BIN_NAME}.exe" "$STAGING/"
+            7z a "dist/${ARTIFACT}.zip" "./$STAGING/*" >/dev/null
           else
-            BIN_PATH="target/$TARGET/release/${BIN_NAME}"
-            tar -C "target/$TARGET/release" -czf "dist/${ARTIFACT}.tar.gz" "${BIN_NAME}"
+            cp "target/$TARGET/release/${BIN_NAME}" "$STAGING/"
+            cp scripts/s3-to-vacuum "$STAGING/"
+            tar -C "$STAGING" -czf "dist/${ARTIFACT}.tar.gz" "${BIN_NAME}" s3-to-vacuum
           fi
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action/download-syft@v0
@@ -266,6 +270,7 @@ jobs:
 
             def install
               bin.install "vacuum"
+              bin.install "s3-to-vacuum"
             end
 
             test do
