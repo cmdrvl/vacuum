@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+readonly VERSION="0.1.0"
+readonly VACUUM_VERSION="0.2.1"
+
+# ── help / version ──────────────────────────────────────────────────────────
+usage() {
+  cat <<'USAGE'
+s3-to-vacuum — convert `aws s3 ls --recursive` output to vacuum.v0 JSONL
+
+Usage:
+  s3-to-vacuum <s3://bucket/prefix> [<s3://bucket/prefix> ...]
+  s3-to-vacuum --help
+  s3-to-vacuum --version
+
+Emits one vacuum.v0 JSONL record per S3 object to stdout.
+Records are sorted by (relative_path, root) for deterministic output.
+USAGE
+}
+
+if [[ "${1:-}" == "--help" ]]; then usage; exit 0; fi
+if [[ "${1:-}" == "--version" ]]; then echo "s3-to-vacuum ${VERSION}"; exit 0; fi
+
+# ── dependency checks ───────────────────────────────────────────────────────
+if ! command -v jq &>/dev/null; then
+  # Can't use jq to emit refusal, so emit raw JSON
+  printf '{"version":"vacuum.v0","outcome":"REFUSAL","refusal":{"code":"E_MISSING_DEPENDENCY","message":"jq not found in PATH","detail":{"command":"jq"},"next_command":null}}\n'
+  exit 2
+fi
+
+refusal() {
+  local code="$1" message="$2" detail="$3"
+  jq -nc \
+    --arg code    "$code" \
+    --arg message "$message" \
+    --argjson detail "$detail" \
+    '{version:"vacuum.v0",outcome:"REFUSAL",refusal:{code:$code,message:$message,detail:$detail,next_command:null}}'
+  exit 2
+}
+
+if ! command -v aws &>/dev/null; then
+  refusal "E_MISSING_DEPENDENCY" "aws not found in PATH" '{"command":"aws"}'
+fi
+
+if [[ $# -eq 0 ]]; then
+  refusal "E_NO_ARGUMENTS" "No S3 URIs provided" '{}'
+fi
+
+# ── MIME lookup ─────────────────────────────────────────────────────────────
+mime_for_ext() {
+  local ext="${1,,}"  # lowercase
+  case "$ext" in
+    .csv)     echo "text/csv" ;;
+    .tsv)     echo "text/tab-separated-values" ;;
+    .txt)     echo "text/plain" ;;
+    .json)    echo "application/json" ;;
+    .jsonl)   echo "application/x-jsonlines" ;;
+    .xml)     echo "application/xml" ;;
+    .pdf)     echo "application/pdf" ;;
+    .xlsx)    echo "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ;;
+    .xls)     echo "application/vnd.ms-excel" ;;
+    .parquet) echo "application/vnd.apache.parquet" ;;
+    .zip)     echo "application/zip" ;;
+    .gz)      echo "application/gzip" ;;
+    .yaml)    echo "application/x-yaml" ;;
+    .yml)     echo "application/x-yaml" ;;
+    *)        echo "null" ;;
+  esac
+}
+
+# ── main loop ───────────────────────────────────────────────────────────────
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+
+for uri in "$@"; do
+  # Validate URI scheme
+  if [[ ! "$uri" =~ ^s3:// ]]; then
+    refusal "E_BAD_URI" "Not an S3 URI" "{\"uri\":$(jq -n --arg u "$uri" '$u')}"
+  fi
+
+  # Parse bucket and prefix from s3://bucket/prefix
+  without_scheme="${uri#s3://}"
+  bucket="${without_scheme%%/*}"
+  prefix="${without_scheme#*/}"
+
+  # Handle s3://bucket (no prefix)
+  if [[ "$prefix" == "$bucket" ]]; then
+    prefix=""
+  fi
+
+  # Normalize: ensure prefix ends with / if non-empty
+  if [[ -n "$prefix" && "${prefix: -1}" != "/" ]]; then
+    prefix="${prefix}/"
+  fi
+
+  root="s3://${bucket}/${prefix}"
+
+  # Run aws s3 ls --recursive
+  listing="$(aws s3 ls --recursive "$uri" 2>&1)" || {
+    refusal "E_AWS_ERROR" "aws s3 ls failed" "{\"root\":$(jq -n --arg r "$root" '$r'),\"detail\":$(jq -n --arg d "$listing" '$d')}"
+  }
+
+  if [[ -z "$listing" ]]; then
+    refusal "E_ROOT_NOT_FOUND" "S3 prefix returned no objects" "{\"root\":$(jq -n --arg r "$root" '$r')}"
+  fi
+
+  # Parse each line: date time size key
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+
+    date_part="${line:0:10}"
+    time_part="${line:11:8}"
+    mtime="${date_part}T${time_part}.000Z"
+
+    # After "YYYY-MM-DD HH:MM:SS" (19 chars), the rest is whitespace + size + space + key
+    rest="${line:19}"
+    # Trim leading spaces
+    rest="${rest#"${rest%%[![:space:]]*}"}"
+    size="${rest%% *}"
+    key="${rest#* }"
+
+    # Relative path: strip prefix from key
+    relative_path="${key#"$prefix"}"
+
+    full_path="s3://${bucket}/${key}"
+
+    # Extension
+    filename="${key##*/}"
+    if [[ "$filename" == *.* ]]; then
+      extension=".${filename##*.}"
+    else
+      extension=""
+    fi
+
+    # MIME
+    if [[ -n "$extension" ]]; then
+      mime="$(mime_for_ext "$extension")"
+    else
+      mime="null"
+    fi
+
+    # Build --argjson values for nullable fields
+    if [[ "$mime" == "null" ]]; then
+      mime_arg="null"
+    else
+      mime_arg="\"${mime}\""
+    fi
+
+    if [[ -z "$extension" ]]; then
+      ext_arg="null"
+    else
+      ext_arg="\"${extension}\""
+    fi
+
+    jq -nc \
+      --arg path          "$full_path" \
+      --arg relative_path "$relative_path" \
+      --arg root          "$root" \
+      --argjson size      "$size" \
+      --arg mtime         "$mtime" \
+      --argjson extension "$ext_arg" \
+      --argjson mime      "$mime_arg" \
+      '{
+        version: "vacuum.v0",
+        path: $path,
+        relative_path: $relative_path,
+        root: $root,
+        size: $size,
+        mtime: $mtime,
+        extension: $extension,
+        mime_guess: $mime,
+        tool_versions: {"s3-to-vacuum": "0.1.0", "vacuum": "0.2.1"}
+      }' >> "$tmpfile"
+  done <<< "$listing"
+done
+
+# Sort by relative_path, then root (deterministic output)
+jq -sc 'sort_by([.relative_path, .root])[]' "$tmpfile"
+
+exit 0
