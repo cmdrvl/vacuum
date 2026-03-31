@@ -260,7 +260,7 @@ Directories are always traversed regardless of include/exclude — patterns only
 |------|---------|-----------|
 | `E_ROOT_NOT_FOUND` | Root path doesn't exist | Check path spelling and that the directory exists |
 | `E_ROOT_PERMISSION` | Can't read root directory (not individual files) | Check directory permissions |
-| `E_IO` | Filesystem error preventing scan start | Check disk/mount |
+| `E_IO` | Filesystem error preventing scan start | Check disk/mount, or scan the parent directory if you passed a file |
 
 > **Note:** Per-file errors (individual files that can't be stat'd) are NOT refusals. They are recorded as `_skipped` records in the output stream. Refusals are reserved for root-level failures that prevent the scan from starting.
 
@@ -292,6 +292,13 @@ E_ROOT_PERMISSION:
 
 E_IO:
   { "root": "/data/broken-mount/", "error": "Input/output error" }
+
+E_IO (file path passed instead of directory):
+  {
+    "root": "analysis_results.json",
+    "error": "Not a directory",
+    "suggested_root": "."
+  }
 ```
 
 ### Multiple roots: fail-fast behavior
@@ -585,7 +592,7 @@ For vacuum, `inputs[].hash` and `inputs[].bytes` are `null` because roots are di
   },
 
   "arguments": [
-    { "name": "roots", "type": "file_path[]", "required": true, "variadic": true, "description": "Root directories to scan" }
+    { "name": "roots", "type": "file_path[]", "required": true, "variadic": true, "description": "Root directories to scan (not individual files)" }
   ],
 
   "options": [
@@ -602,7 +609,7 @@ For vacuum, `inputs[].hash` and `inputs[].bytes` are `null` because roots are di
   "refusals": [
     { "code": "E_ROOT_NOT_FOUND", "message": "Root path doesn't exist", "action": "escalate" },
     { "code": "E_ROOT_PERMISSION", "message": "Can't read root", "action": "escalate" },
-    { "code": "E_IO", "message": "Filesystem error during scan", "action": "escalate" }
+    { "code": "E_IO", "message": "Filesystem error during scan", "action": "check_root_or_scan_parent", "hint": "vacuum scans directories, not individual files" }
   ],
 
   "capabilities": {

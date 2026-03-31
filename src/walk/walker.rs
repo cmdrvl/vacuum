@@ -294,13 +294,16 @@ fn validate_root(root: &Path) -> Result<(), Refusal> {
     };
 
     if !metadata.is_dir() {
+        let suggested_root = suggested_scan_root(root);
         return Err(Refusal::new(
             RefusalCode::Io,
             json!({
                 "root": root.display().to_string(),
                 "error": "Not a directory",
+                "suggested_root": display_root(suggested_root),
             }),
-        ));
+        )
+        .with_next_command(format!("vacuum {}", shell_quote_root(suggested_root))));
     }
 
     if let Err(error) = fs::read_dir(root) {
@@ -308,6 +311,25 @@ fn validate_root(root: &Path) -> Result<(), Refusal> {
     }
 
     Ok(())
+}
+
+fn suggested_scan_root(root: &Path) -> &Path {
+    match root.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    }
+}
+
+fn display_root(root: &Path) -> String {
+    if root.as_os_str().is_empty() {
+        ".".to_string()
+    } else {
+        root.display().to_string()
+    }
+}
+
+fn shell_quote_root(root: &Path) -> String {
+    format!("'{}'", display_root(root).replace('\'', "'\"'\"'"))
 }
 
 fn refusal_from_io(root: &Path, error: io::Error) -> Refusal {
@@ -342,7 +364,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use super::{scan_roots, validate_roots};
+    use super::{scan_roots, suggested_scan_root, validate_roots};
     use crate::refusal::codes::RefusalCode;
 
     fn fixture(name: &str) -> PathBuf {
@@ -533,6 +555,26 @@ mod tests {
         assert_eq!(refusal.code, RefusalCode::Io);
         assert_eq!(refusal.detail["root"].as_str(), file_path.to_str());
         assert_eq!(refusal.detail["error"].as_str(), Some("Not a directory"));
+        assert_eq!(
+            refusal.detail["suggested_root"].as_str(),
+            temp_dir.path().to_str()
+        );
+        let expected = format!("vacuum '{}'", temp_dir.path().display());
+        assert_eq!(refusal.next_command.as_deref(), Some(expected.as_str()));
+    }
+
+    #[test]
+    fn suggested_scan_root_uses_parent_directory_when_available() {
+        let file_path = PathBuf::from("/tmp/vacuum/report.json");
+
+        assert_eq!(suggested_scan_root(&file_path), Path::new("/tmp/vacuum"));
+    }
+
+    #[test]
+    fn suggested_scan_root_falls_back_to_dot_for_single_component_relative_file() {
+        let file_path = PathBuf::from("analysis_results.json");
+
+        assert_eq!(suggested_scan_root(&file_path), Path::new("."));
     }
 
     #[test]

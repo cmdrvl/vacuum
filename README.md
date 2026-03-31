@@ -115,7 +115,7 @@ Cannot begin scanning. The root directory doesn't exist, isn't readable, or a fi
 }
 ```
 
-Refusals always include the error code and detail.
+Refusals always include the error code and detail. Mechanical misuse cases, like passing a file instead of a directory, also include a concrete `next_command`.
 
 ---
 
@@ -267,7 +267,7 @@ Skipped records flow downstream — `hash` passes them through, `lock` collects 
 |------|---------|-----------|
 | `E_ROOT_NOT_FOUND` | Root path doesn't exist | Check path spelling and that directory exists |
 | `E_ROOT_PERMISSION` | Can't read root directory | Check directory permissions |
-| `E_IO` | Filesystem error preventing scan start | Check disk/mount health |
+| `E_IO` | Filesystem error preventing scan start | Check disk/mount health, or scan the parent directory if you passed a file |
 
 Multiple roots: fail-fast on the first failing root.
 
@@ -291,6 +291,16 @@ You don't have permission to read the root directory:
 ```bash
 ls -la /data/  # check permissions on parent
 # Fix: adjust permissions or run with appropriate access
+```
+
+### "E_IO" — passed a file instead of a directory
+
+`vacuum` scans directories, not individual files. If you passed a file path like `vacuum analysis_results.json`, rerun it against the parent directory or `.`:
+
+```bash
+vacuum .
+# or
+vacuum reports/
 ```
 
 ### Skipped files in output

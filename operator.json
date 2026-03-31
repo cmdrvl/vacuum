@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "vacuum",
-  "version": "0.2.1",
+  "version": "0.3.2",
   "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
   "repository": "https://github.com/cmdrvl/vacuum",
   "license": "MIT",
@@ -18,7 +18,7 @@
       "type": "file_path[]",
       "required": true,
       "variadic": true,
-      "description": "Root directories to scan"
+      "description": "Root directories to scan (not individual files)"
     }
   ],
   "options": [
@@ -67,7 +67,8 @@
     {
       "code": "E_IO",
       "message": "Filesystem error during scan",
-      "action": "escalate"
+      "action": "check_root_or_scan_parent",
+      "hint": "vacuum scans directories, not individual files"
     }
   ],
   "capabilities": {

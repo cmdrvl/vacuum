@@ -400,6 +400,14 @@ fn refusal_envelope_for_non_directory_root_uses_e_io() {
         refusal["refusal"]["message"],
         "Filesystem error during scan"
     );
+    assert_eq!(
+        refusal["refusal"]["detail"]["suggested_root"],
+        temp_dir.path().to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        refusal["refusal"]["next_command"],
+        format!("vacuum '{}'", temp_dir.path().display())
+    );
 }
 
 #[test]

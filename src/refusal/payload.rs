@@ -7,11 +7,21 @@ use crate::refusal::codes::RefusalCode;
 pub struct Refusal {
     pub code: RefusalCode,
     pub detail: Value,
+    pub next_command: Option<String>,
 }
 
 impl Refusal {
     pub fn new(code: RefusalCode, detail: Value) -> Self {
-        Self { code, detail }
+        Self {
+            code,
+            detail,
+            next_command: None,
+        }
+    }
+
+    pub fn with_next_command(mut self, next_command: impl Into<String>) -> Self {
+        self.next_command = Some(next_command.into());
+        self
     }
 }
 
@@ -42,7 +52,7 @@ pub fn render(refusal: &Refusal) -> String {
             code: refusal.code.as_str(),
             message: refusal.code.message(),
             detail: &refusal.detail,
-            next_command: None,
+            next_command: refusal.next_command.clone(),
         },
     };
 
