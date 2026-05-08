@@ -5,6 +5,7 @@ use std::ffi::OsString;
 use serde_json::json;
 
 pub mod cli;
+pub mod doctor;
 pub mod output;
 pub mod record;
 pub mod refusal;
@@ -34,7 +35,14 @@ pub fn run() -> u8 {
     }
 
     if let Some(command) = cli.command.as_ref() {
-        return witness::query::dispatch(command);
+        return match command {
+            cli::args::Command::Witness { action } => witness::query::dispatch(action),
+            cli::args::Command::Doctor {
+                robot_triage,
+                json,
+                action,
+            } => doctor::dispatch(*robot_triage, *json, action.as_ref()),
+        };
     }
 
     if cli.roots.is_empty() {

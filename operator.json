@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "vacuum",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
   "repository": "https://github.com/cmdrvl/vacuum",
   "license": "MIT",

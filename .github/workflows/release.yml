@@ -58,8 +58,40 @@ jobs:
             exit 1
           fi
 
-  build:
+  verify:
     needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test
+      - name: Smoke doctor surface
+        run: |
+          cargo run --locked -- doctor health
+          cargo run --locked -- doctor capabilities --json
+          cargo run --locked -- doctor robot-docs
+          cargo run --locked -- doctor --robot-triage
+
+  build:
+    needs:
+      - validate-version
+      - verify
     strategy:
       fail-fast: false
       matrix:

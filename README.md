@@ -171,6 +171,8 @@ cargo build --release
 
 ```bash
 vacuum <ROOT>... [OPTIONS]
+vacuum doctor <health|capabilities|robot-docs> [OPTIONS]
+vacuum doctor --robot-triage
 vacuum witness <query|last|count> [OPTIONS]
 ```
 
@@ -190,6 +192,20 @@ vacuum witness <query|last|count> [OPTIONS]
 | `--schema` | flag | `false` | Print JSONL record JSON schema, exit `0` |
 | `--progress` | flag | `false` | Emit structured progress JSONL to stderr |
 | `--version` | flag | `false` | Print `vacuum <semver>` to stdout, exit `0` |
+
+### Doctor Mode
+
+`vacuum doctor` is a read-only diagnostic surface for agents and operators. It does not scan roots, read dataset file contents, append witness records, create witness directories, write `.doctor` artifacts, rewrite metadata, or use the network.
+
+```bash
+vacuum doctor health
+vacuum doctor health --json
+vacuum doctor capabilities --json
+vacuum doctor robot-docs
+vacuum doctor --robot-triage
+```
+
+There is no fix mode in this release. `vacuum doctor --fix` is intentionally unavailable until a future fixer has detector, backup, inverse, and fixture coverage.
 
 ### Exit Codes
 

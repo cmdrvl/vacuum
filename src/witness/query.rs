@@ -2,20 +2,11 @@ use std::{fs, io::ErrorKind};
 
 use serde_json::{Value, json};
 
-use crate::{
-    cli::args::{Command, WitnessAction},
-    witness::ledger::resolve_ledger_path,
-};
+use crate::{cli::args::WitnessAction, witness::ledger::resolve_ledger_path};
 
 const NO_MATCH_EXIT: u8 = 1;
 
-pub fn dispatch(command: &Command) -> u8 {
-    match command {
-        Command::Witness { action } => dispatch_witness(action),
-    }
-}
-
-fn dispatch_witness(action: &WitnessAction) -> u8 {
+pub fn dispatch(action: &WitnessAction) -> u8 {
     let entries = match read_entries() {
         Ok(entries) => entries,
         Err(error) => {

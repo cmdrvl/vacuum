@@ -29,6 +29,26 @@ if ! printf '%s\n' "$SCHEMA_OUTPUT" | grep -Eq '"title"[[:space:]]*:[[:space:]]*
   exit 1
 fi
 
+echo "[smoke] checking doctor health"
+"$BIN" doctor health >/dev/null
+
+echo "[smoke] checking doctor capabilities"
+CAPABILITIES_OUTPUT="$("$BIN" doctor capabilities --json)"
+if ! printf '%s\n' "$CAPABILITIES_OUTPUT" | grep -Eq '"read_only"[[:space:]]*:[[:space:]]*true'; then
+  echo "doctor capabilities output missing read_only=true" >&2
+  exit 1
+fi
+
+echo "[smoke] checking doctor robot docs"
+"$BIN" doctor robot-docs >/dev/null
+
+echo "[smoke] checking doctor robot triage"
+TRIAGE_OUTPUT="$("$BIN" doctor --robot-triage)"
+if ! printf '%s\n' "$TRIAGE_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"vacuum.doctor.triage.v1"'; then
+  echo "doctor robot triage output missing schema version" >&2
+  exit 1
+fi
+
 echo "[smoke] scanning fixture output"
 SCAN_OUTPUT="$("$BIN" "$ROOT_DIR/tests/fixtures/simple")"
 if ! printf '%s\n' "$SCAN_OUTPUT" | grep -Eq '"version"[[:space:]]*:[[:space:]]*"vacuum.v0"'; then
