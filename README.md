@@ -1,5 +1,9 @@
 # vacuum
 
+![vacuum: delivery survey, read-only. A painterly dashboard showing an incoming delivery of 47 mixed-type files (CSV, XLSX, PDF, HTML, TMP, Unknown) being surveyed by a read-only scanning sweep into a structured manifest with path, size, type, mtime, and mode columns. A counts summary shows the type breakdown and one flagged tmp file. A WHAT VACUUM WILL NOT DO panel shows four crossed-out actions: open, parse, modify, move. A receiving clerk's clipboard on the desk holds a handwritten delivery receipt stamped SURVEYED READ-ONLY.](docs/images/vacuum.webp)
+
+> *Know what's there before you touch anything.*
+
 <div align="center">
 
 [![CI](https://github.com/cmdrvl/vacuum/actions/workflows/ci.yml/badge.svg)](https://github.com/cmdrvl/vacuum/actions/workflows/ci.yml)
@@ -542,3 +546,7 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+---
+
+*`vacuum` is part of the open-source toolchain from the [CMD+RVL](https://cmdrvl.com) lineage and AI enablement practice. MIT-licensed. Contributions welcome from any practice or stack.*
