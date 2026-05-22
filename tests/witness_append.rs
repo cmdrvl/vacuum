@@ -1,4 +1,6 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
+
+mod support;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -20,7 +22,7 @@ fn successful_scan_appends_witness_record_by_default() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let witness_path = temp_dir.path().join("witness.jsonl");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("witness-success")
         .arg(fixture("simple"))
         .env("EPISTEMIC_WITNESS", &witness_path)
         .output()
@@ -64,7 +66,7 @@ fn refusal_run_appends_refusal_witness_record() {
     let witness_path = temp_dir.path().join("witness.jsonl");
     let missing_root = temp_dir.path().join("missing-root");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("witness-refusal")
         .arg(&missing_root)
         .env("EPISTEMIC_WITNESS", &witness_path)
         .output()
@@ -93,7 +95,7 @@ fn consecutive_runs_chain_prev_ids() {
     let root = fixture("simple");
 
     for _ in 0..2 {
-        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        let output = support::vacuum_command("witness-chain")
             .arg(&root)
             .env("EPISTEMIC_WITNESS", &witness_path)
             .output()
@@ -112,7 +114,7 @@ fn no_witness_flag_suppresses_witness_append() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let witness_path = temp_dir.path().join("witness.jsonl");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("witness-no-witness")
         .arg(fixture("simple"))
         .arg("--no-witness")
         .env("EPISTEMIC_WITNESS", &witness_path)

@@ -1,6 +1,8 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use serde_json::Value;
+
+mod support;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -11,7 +13,7 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn cli_smoke_flags_and_manifest_parse() {
-    let version = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let version = support::vacuum_command("smoke-version")
         .arg("--version")
         .output()
         .expect("version command should run");
@@ -22,7 +24,7 @@ fn cli_smoke_flags_and_manifest_parse() {
             .starts_with("vacuum ")
     );
 
-    let describe = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let describe = support::vacuum_command("smoke-describe")
         .arg("--describe")
         .output()
         .expect("describe command should run");
@@ -31,7 +33,7 @@ fn cli_smoke_flags_and_manifest_parse() {
         serde_json::from_slice(&describe.stdout).expect("describe output should parse");
     assert_eq!(describe_json["schema_version"], "operator.v0");
 
-    let schema = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let schema = support::vacuum_command("smoke-schema")
         .arg("--schema")
         .output()
         .expect("schema command should run");
@@ -40,7 +42,7 @@ fn cli_smoke_flags_and_manifest_parse() {
         serde_json::from_slice(&schema.stdout).expect("schema output should parse");
     assert_eq!(schema_json["title"], "vacuum.v0");
 
-    let scan = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let scan = support::vacuum_command("smoke-scan")
         .arg(fixture("simple"))
         .output()
         .expect("scan command should run");
@@ -55,7 +57,7 @@ fn cli_smoke_flags_and_manifest_parse() {
 
 #[test]
 fn display_flags_short_circuit_before_invalid_witness_args_are_parsed() {
-    let version = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let version = support::vacuum_command("smoke-short-version")
         .args(["--version", "witness", "query", "--limit", "nope"])
         .output()
         .expect("version command should run");
@@ -67,7 +69,7 @@ fn display_flags_short_circuit_before_invalid_witness_args_are_parsed() {
     );
     assert!(version.stderr.is_empty(), "version should not emit stderr");
 
-    let describe = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let describe = support::vacuum_command("smoke-short-describe")
         .args(["--describe", "witness", "query", "--limit", "nope"])
         .output()
         .expect("describe command should run");
@@ -80,7 +82,7 @@ fn display_flags_short_circuit_before_invalid_witness_args_are_parsed() {
         "describe should not emit stderr"
     );
 
-    let schema = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let schema = support::vacuum_command("smoke-short-schema")
         .args(["--schema", "witness", "query", "--limit", "nope"])
         .output()
         .expect("schema command should run");
@@ -94,7 +96,7 @@ fn display_flags_short_circuit_before_invalid_witness_args_are_parsed() {
 #[test]
 fn cli_smoke_refusal_exit_code() {
     let missing = fixture("does-not-exist");
-    let refusal = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let refusal = support::vacuum_command("smoke-refusal")
         .arg(missing)
         .output()
         .expect("refusal command should run");

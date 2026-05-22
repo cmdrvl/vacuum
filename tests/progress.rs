@@ -1,8 +1,13 @@
 #[cfg(unix)]
+mod support;
+
+#[cfg(unix)]
 mod tests {
-    use std::{fs, path::PathBuf, process::Command};
+    use std::{fs, path::PathBuf};
 
     use serde_json::Value;
+
+    use super::support;
 
     fn fixture(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -15,7 +20,7 @@ mod tests {
     fn progress_mode_emits_structured_stderr_without_polluting_stdout_manifest() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let witness_path = temp_dir.path().join("witness.jsonl");
-        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        let output = support::vacuum_command("progress-structured")
             .arg(fixture("symlinks"))
             .arg("--progress")
             .env("EPISTEMIC_WITNESS", &witness_path)
@@ -63,7 +68,7 @@ mod tests {
         fs::write(&witness_parent, "not a directory").expect("blocker file should be created");
         let witness_path = witness_parent.join("witness.jsonl");
 
-        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        let output = support::vacuum_command("progress-witness-failure")
             .arg(fixture("symlinks"))
             .arg("--progress")
             .env("EPISTEMIC_WITNESS", &witness_path)
@@ -101,7 +106,7 @@ mod tests {
     fn default_mode_emits_unstructured_warnings_only() {
         let temp_dir = tempfile::tempdir().expect("tempdir should be created");
         let witness_path = temp_dir.path().join("witness.jsonl");
-        let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        let output = support::vacuum_command("progress-default")
             .arg(fixture("symlinks"))
             .env("EPISTEMIC_WITNESS", &witness_path)
             .output()

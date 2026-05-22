@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
 use serde_json::Value;
 use tempfile::tempdir;
@@ -6,6 +6,8 @@ use vacuum::{
     record::{builder::VacuumRecord, mime::guess_from_extension},
     walk::filter::apply_filters,
 };
+
+mod support;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -33,7 +35,7 @@ fn filter_matches(path: &str, include: &[&str], exclude: &[&str]) -> bool {
 }
 
 fn run_scan(paths: &[PathBuf]) -> Vec<Value> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vacuum"));
+    let mut command = support::vacuum_command("coverage-scan");
     command.arg("--no-witness");
     for path in paths {
         command.arg(path);
@@ -73,7 +75,7 @@ fn assert_sorted_contract(rows: &[Value]) {
 }
 
 fn run_refusal(args: &[&str]) -> Value {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_vacuum"));
+    let mut command = support::vacuum_command("coverage-refusal");
     command.args(args).arg("--no-witness");
     let output = command.output().expect("command should execute");
     assert_eq!(output.status.code(), Some(2));

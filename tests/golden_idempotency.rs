@@ -1,6 +1,8 @@
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
 use serde_json::Value;
+
+mod support;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -19,7 +21,7 @@ fn golden(name: &str) -> Vec<Value> {
 }
 
 fn run_scan(args: &[&str]) -> Vec<Value> {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("golden-idempotency")
         .args(args)
         .output()
         .expect("vacuum binary should run");

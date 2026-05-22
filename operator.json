@@ -55,6 +55,11 @@
   },
   "refusals": [
     {
+      "code": "E_GUARD_PREFLIGHT",
+      "message": "Required Claude PreToolUse guard hooks are missing or unhealthy",
+      "action": "repair_guard_hooks"
+    },
+    {
       "code": "E_ROOT_NOT_FOUND",
       "message": "Root path doesn't exist",
       "action": "escalate"

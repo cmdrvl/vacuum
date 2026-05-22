@@ -536,6 +536,7 @@ dependencies = [
  "globset",
  "serde",
  "serde_json",
+ "shlex",
  "spine-rules",
  "tempfile",
  "walkdir",

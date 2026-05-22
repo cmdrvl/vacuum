@@ -1,6 +1,8 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use serde_json::Value;
+
+mod support;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -19,7 +21,7 @@ fn parse_json_lines(stdout: &[u8]) -> Vec<Value> {
 
 #[test]
 fn basic_scan_emits_sorted_manifest_with_exit_zero() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("core-basic")
         .arg(fixture("nested"))
         .output()
         .expect("vacuum binary should run");
@@ -45,7 +47,7 @@ fn basic_scan_emits_sorted_manifest_with_exit_zero() {
 
 #[test]
 fn include_and_exclude_flags_filter_records_by_relative_path() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("core-filter")
         .arg(fixture("mixed"))
         .args([
             "--include",
@@ -71,7 +73,7 @@ fn include_and_exclude_flags_filter_records_by_relative_path() {
 #[cfg(unix)]
 #[test]
 fn symlink_modes_and_skipped_record_contract_hold() {
-    let follow = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let follow = support::vacuum_command("core-follow")
         .arg(fixture("symlinks"))
         .output()
         .expect("vacuum binary should run");
@@ -92,7 +94,7 @@ fn symlink_modes_and_skipped_record_contract_hold() {
     assert!(skipped["mtime"].is_null());
     assert_eq!(skipped["_warnings"][0]["code"], "E_IO");
 
-    let no_follow = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let no_follow = support::vacuum_command("core-no-follow")
         .arg(fixture("symlinks"))
         .arg("--no-follow")
         .output()
@@ -108,7 +110,7 @@ fn symlink_modes_and_skipped_record_contract_hold() {
 
 #[test]
 fn mime_mapping_and_path_normalization_are_present_in_records() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("core-mime")
         .arg(fixture("nested"))
         .output()
         .expect("vacuum binary should run");
@@ -135,7 +137,7 @@ fn literal_backslashes_in_filenames_are_not_reinterpreted_as_separators() {
     let tmp = tempfile::tempdir().unwrap();
     std::fs::write(tmp.path().join(r"literal\slash.csv"), "a,b\n1,2\n").unwrap();
 
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("core-backslashes")
         .arg(tmp.path())
         .output()
         .expect("vacuum binary should run");
@@ -157,7 +159,7 @@ fn literal_backslashes_in_filenames_are_not_reinterpreted_as_separators() {
 #[test]
 fn missing_root_refuses_with_exit_two() {
     let missing_root = PathBuf::from("/definitely-missing-vacuum-root-core-suite");
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("core-missing-root")
         .arg(missing_root)
         .output()
         .expect("vacuum binary should run");

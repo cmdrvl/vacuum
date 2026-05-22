@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -77,4 +79,25 @@ pub fn render(refusal: &Refusal) -> String {
 
 pub fn empty_roots_refusal() -> Refusal {
     Refusal::new(RefusalCode::RootNotFound, json!({ "root": "" }))
+}
+
+pub fn guard_preflight_refusal(settings_path: Option<&Path>, findings: Vec<String>) -> Refusal {
+    Refusal::new(
+        RefusalCode::GuardPreflight,
+        json!({
+            "settings_path": settings_path.map(|path| path.display().to_string()),
+            "required": {
+                "veil": {
+                    "event": "PreToolUse",
+                    "matchers": ["Read", "Grep", "Bash"]
+                },
+                "dcg": {
+                    "event": "PreToolUse",
+                    "matchers": ["Bash"]
+                }
+            },
+            "findings": findings,
+        }),
+    )
+    .with_next_command("Install or repair veil and dcg Claude PreToolUse hooks, then rerun vacuum")
 }

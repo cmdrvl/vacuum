@@ -1,6 +1,8 @@
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
 
 use serde_json::Value;
+
+mod support;
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -11,7 +13,7 @@ fn fixture(name: &str) -> PathBuf {
 
 #[test]
 fn version_flag_prints_semver_like_output() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("cli-version")
         .arg("--version")
         .output()
         .expect("vacuum binary should run");
@@ -23,7 +25,7 @@ fn version_flag_prints_semver_like_output() {
 
 #[test]
 fn describe_and_schema_flags_print_valid_json() {
-    let describe = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let describe = support::vacuum_command("cli-describe")
         .arg("--describe")
         .output()
         .expect("vacuum binary should run");
@@ -33,7 +35,7 @@ fn describe_and_schema_flags_print_valid_json() {
     assert_eq!(describe_json["name"], "vacuum");
     assert_eq!(describe_json["schema_version"], "operator.v0");
 
-    let schema = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let schema = support::vacuum_command("cli-schema")
         .arg("--schema")
         .output()
         .expect("vacuum binary should run");
@@ -45,7 +47,7 @@ fn describe_and_schema_flags_print_valid_json() {
 
 #[test]
 fn fixture_scan_stdout_is_jsonl_records() {
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("cli-scan")
         .arg(fixture("simple"))
         .output()
         .expect("vacuum binary should run");
@@ -65,7 +67,7 @@ fn fixture_scan_stdout_is_jsonl_records() {
 #[test]
 fn missing_root_refusal_returns_exit_two_and_refusal_json() {
     let missing_root = PathBuf::from("/definitely-missing-vacuum-root-smoke");
-    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+    let output = support::vacuum_command("cli-missing-root")
         .arg(missing_root)
         .output()
         .expect("vacuum binary should run");
