@@ -258,7 +258,6 @@ Directories are always traversed regardless of include/exclude — patterns only
 
 | Code | Trigger | Next step |
 |------|---------|-----------|
-| `E_GUARD_PREFLIGHT` | Required Claude `PreToolUse` guard hooks are missing or unhealthy | Install or repair `veil` and `dcg` hooks |
 | `E_ROOT_NOT_FOUND` | Root path doesn't exist | Check path spelling and that the directory exists |
 | `E_ROOT_PERMISSION` | Can't read root directory (not individual files) | Check directory permissions |
 | `E_IO` | Filesystem error preventing scan start | Check disk/mount, or scan the parent directory if you passed a file |
@@ -287,16 +286,6 @@ On refusal the envelope is a single JSON object emitted to stdout (not JSONL, no
 ```
 E_ROOT_NOT_FOUND:
   { "root": "/data/nonexistent/" }
-
-E_GUARD_PREFLIGHT:
-  {
-    "settings_path": "/home/operator/.claude/settings.json",
-    "required": {
-      "veil": { "event": "PreToolUse", "matchers": ["Read", "Grep", "Bash"] },
-      "dcg": { "event": "PreToolUse", "matchers": ["Bash"] }
-    },
-    "findings": ["dcg Bash hook is missing"]
-  }
 
 E_ROOT_PERMISSION:
   { "root": "/data/restricted/", "error": "Permission denied" }
@@ -618,7 +607,6 @@ For vacuum, `inputs[].hash` and `inputs[].bytes` are `null` because roots are di
   },
 
   "refusals": [
-    { "code": "E_GUARD_PREFLIGHT", "message": "Required Claude PreToolUse guard hooks are missing or unhealthy", "action": "repair_guard_hooks" },
     { "code": "E_ROOT_NOT_FOUND", "message": "Root path doesn't exist", "action": "escalate" },
     { "code": "E_ROOT_PERMISSION", "message": "Can't read root", "action": "escalate" },
     { "code": "E_IO", "message": "Filesystem error during scan", "action": "check_root_or_scan_parent", "hint": "vacuum scans directories, not individual files" }
@@ -695,7 +683,7 @@ Golden file comparisons must normalize or ignore `mtime` (and `path`/`root` abso
 - `--version` flag
 - `operator.json` + `--describe`
 - Exit codes 0/2
-- Refusal system with `E_GUARD_PREFLIGHT`, `E_ROOT_NOT_FOUND`, `E_ROOT_PERMISSION`, `E_IO`
+- Refusal system with `E_ROOT_NOT_FOUND`, `E_ROOT_PERMISSION`, `E_IO`
 
 ### Can defer
 

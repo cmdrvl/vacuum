@@ -6,7 +6,6 @@ use serde_json::json;
 
 pub mod cli;
 pub mod doctor;
-pub mod guard;
 pub mod output;
 pub mod record;
 pub mod refusal;
@@ -44,11 +43,6 @@ pub fn run() -> u8 {
                 action,
             } => doctor::dispatch(*robot_triage, *json, action.as_ref()),
         };
-    }
-
-    if let Err(refusal) = guard::enforce_guard_preflight() {
-        refusal::payload::emit(&refusal);
-        return cli::exit::REFUSAL;
     }
 
     if cli.roots.is_empty() {

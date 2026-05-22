@@ -1,5 +1,4 @@
-use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -17,7 +16,7 @@ static WRAPPER_BINARY: OnceLock<String> = OnceLock::new();
 pub fn vacuum_command(label: &str) -> Command {
     let root = unique_root(label);
     let home = root.join("home");
-    write_healthy_guard_hooks(&home);
+    fs::create_dir_all(&home).expect("temporary home should be creatable");
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_vacuum"));
     command.env("HOME", &home);
@@ -28,41 +27,6 @@ pub fn vacuum_command(label: &str) -> Command {
 #[allow(dead_code)]
 pub fn vacuum_binary() -> &'static str {
     WRAPPER_BINARY.get_or_init(create_vacuum_wrapper).as_str()
-}
-
-pub fn write_guard_hooks(home: &Path, dcg_command: &str) {
-    let settings_path = home.join(".claude/settings.json");
-    let veil_path = home.join("bin/veil");
-    create_executable(&veil_path);
-    if let Some(parent) = settings_path.parent() {
-        fs::create_dir_all(parent).expect("settings parent should be creatable");
-    }
-    fs::write(
-        settings_path,
-        serde_json::json!({
-            "hooks": {
-                "PreToolUse": [
-                    { "matcher": "Read", "hooks": [{ "type": "command", "command": veil_path.display().to_string() }] },
-                    { "matcher": "Grep", "hooks": [{ "type": "command", "command": veil_path.display().to_string() }] },
-                    {
-                        "matcher": "Bash",
-                        "hooks": [
-                            { "type": "command", "command": veil_path.display().to_string() },
-                            { "type": "command", "command": dcg_command }
-                        ]
-                    }
-                ]
-            }
-        })
-        .to_string(),
-    )
-    .expect("settings should be writable");
-}
-
-pub fn write_healthy_guard_hooks(home: &Path) {
-    let dcg_path = home.join("bin/dcg");
-    create_executable(&dcg_path);
-    write_guard_hooks(home, &dcg_path.display().to_string());
 }
 
 #[allow(dead_code)]
@@ -80,7 +44,7 @@ fn unique_root(label: &str) -> PathBuf {
 fn create_vacuum_wrapper() -> String {
     let root = unique_root("golden-rules");
     let home = root.join("home");
-    write_healthy_guard_hooks(&home);
+    fs::create_dir_all(&home).expect("temporary home should be creatable");
 
     let wrapper_path = root.join("vacuum-wrapper");
     fs::write(
@@ -95,20 +59,6 @@ fn create_vacuum_wrapper() -> String {
     .expect("wrapper should be writable");
     make_executable(&wrapper_path);
     wrapper_path.display().to_string()
-}
-
-fn create_executable(path: &Path) {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).expect("executable parent should be creatable");
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .expect("test executable should be writable");
-    file.write_all(b"#!/bin/sh\nexit 0\n")
-        .expect("test executable should be writable");
-    make_executable(path);
 }
 
 fn make_executable(path: &Path) {
