@@ -2,7 +2,10 @@ use std::{fs, io::ErrorKind};
 
 use serde_json::{Value, json};
 
-use crate::{cli::args::WitnessAction, witness::ledger::resolve_ledger_path};
+use crate::{
+    cli::args::WitnessAction,
+    witness::ledger::{ensure_ledger_migrated, resolve_ledger_path},
+};
 
 const NO_MATCH_EXIT: u8 = 1;
 
@@ -132,6 +135,8 @@ fn run_count(entries: &[LedgerEntry], filter: QueryFilter, json_mode: bool) -> u
 }
 
 fn read_entries() -> Result<Vec<LedgerEntry>, std::io::Error> {
+    ensure_ledger_migrated()?;
+
     let path = resolve_ledger_path();
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,

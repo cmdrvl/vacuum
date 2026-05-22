@@ -529,8 +529,11 @@ vacuum witness count [--tool <name>] [--since <iso8601>] [--until <iso8601>] \
 
 ### Ledger Location
 
-- Default: `~/.epistemic/witness.jsonl`
-- Override: set `EPISTEMIC_WITNESS` environment variable
+- Default: `~/.cmdrvl/state/witness/witness.jsonl`
+- First-run migration: if `~/.epistemic/witness.jsonl` exists and the
+  canonical ledger is absent, `vacuum` copies it into `~/.cmdrvl/`, records
+  the migration, and leaves a deprecation notice under `~/.cmdrvl/notices/`.
+- Override: set `EPISTEMIC_WITNESS` as an explicit operator override.
 - Malformed ledger lines are skipped; valid lines continue to be processed.
 
 </details>

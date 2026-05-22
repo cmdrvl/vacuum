@@ -107,7 +107,10 @@ Note: there is **no exit code 1** — per-file failures produce `_skipped` recor
 ### 6. Witness parity
 
 Ambient witness semantics must match spine conventions:
-- Append by default to `$EPISTEMIC_WITNESS` or `~/.epistemic/witness.jsonl`.
+- Append by default to `~/.cmdrvl/state/witness/witness.jsonl`.
+- On first run, migrate a legacy `~/.epistemic/witness.jsonl` ledger into the
+  canonical `~/.cmdrvl/` root and leave migration/deprecation records.
+- Respect `$EPISTEMIC_WITNESS` only as an explicit operator override.
 - `--no-witness` opt-out.
 - Witness failures do not mutate domain outcome semantics (non-fatal).
 - Witness query subcommands supported (`query`, `last`, `count`).

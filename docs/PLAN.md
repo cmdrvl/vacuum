@@ -101,8 +101,14 @@ There is no exit code `1` for vacuum. vacuum either scans successfully or refuse
 - Default behavior: every scan run appends exactly one `witness.v0` record.
 - Opt-out: `--no-witness`.
 - Ledger path resolution:
-  1. `EPISTEMIC_WITNESS` env var, if set
-  2. `~/.epistemic/witness.jsonl` otherwise
+  1. `EPISTEMIC_WITNESS` env var, if set as an explicit operator override
+  2. `~/.cmdrvl/state/witness/witness.jsonl` otherwise
+- First-run migration: when the managed canonical ledger is used and
+  `~/.epistemic/witness.jsonl` exists, copy the legacy ledger into
+  `~/.cmdrvl/state/witness/witness.jsonl`, preserve file permissions as
+  tightly as possible, record the migration in
+  `~/.cmdrvl/migrations/applied.jsonl`, and write a deprecation notice to
+  `~/.cmdrvl/notices/deprecated-paths.jsonl`.
 - Witness failures never change the domain exit code.
 
 Witness query subcommands:

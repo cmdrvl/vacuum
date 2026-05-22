@@ -17,6 +17,13 @@ fn read_witness_lines(path: &PathBuf) -> Vec<serde_json::Value> {
         .collect()
 }
 
+fn canonical_witness_path(home: &std::path::Path) -> PathBuf {
+    home.join(".cmdrvl")
+        .join("state")
+        .join("witness")
+        .join("witness.jsonl")
+}
+
 #[test]
 fn successful_scan_appends_witness_record_by_default() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
@@ -58,6 +65,70 @@ fn successful_scan_appends_witness_record_by_default() {
             .as_str()
             .is_some_and(|value| value.starts_with("blake3:"))
     );
+}
+
+#[test]
+fn successful_scan_appends_to_cmdrvl_witness_by_default() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let witness_path = canonical_witness_path(temp_dir.path());
+
+    let output = support::vacuum_command("witness-cmdrvl-default")
+        .arg(fixture("simple"))
+        .env("HOME", temp_dir.path())
+        .env("USERPROFILE", temp_dir.path())
+        .env_remove("EPISTEMIC_WITNESS")
+        .output()
+        .expect("vacuum binary should run");
+
+    assert!(output.status.success(), "scan should exit 0");
+    let lines = read_witness_lines(&witness_path);
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0]["tool"], "vacuum");
+    assert_eq!(lines[0]["outcome"], "SCAN_COMPLETE");
+}
+
+#[test]
+fn legacy_home_witness_is_migrated_before_append() {
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let legacy_path = temp_dir.path().join(".epistemic").join("witness.jsonl");
+    fs::create_dir_all(legacy_path.parent().expect("legacy parent"))
+        .expect("legacy parent should be created");
+    fs::write(
+        &legacy_path,
+        "{\"version\":\"witness.v0\",\"tool\":\"vacuum\",\"outcome\":\"OLD\"}\n",
+    )
+    .expect("legacy witness should be written");
+
+    let output = support::vacuum_command("witness-migration")
+        .arg(fixture("simple"))
+        .env("HOME", temp_dir.path())
+        .env("USERPROFILE", temp_dir.path())
+        .env_remove("EPISTEMIC_WITNESS")
+        .output()
+        .expect("vacuum binary should run");
+
+    assert!(output.status.success(), "scan should exit 0");
+    let canonical_path = canonical_witness_path(temp_dir.path());
+    let lines = read_witness_lines(&canonical_path);
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0]["outcome"], "OLD");
+    assert_eq!(lines[1]["outcome"], "SCAN_COMPLETE");
+
+    let notice_path = temp_dir
+        .path()
+        .join(".cmdrvl")
+        .join("notices")
+        .join("deprecated-paths.jsonl");
+    let notice = fs::read_to_string(notice_path).expect("deprecation notice should be written");
+    assert!(notice.contains("legacy_path_migrated"));
+
+    let migration_path = temp_dir
+        .path()
+        .join(".cmdrvl")
+        .join("migrations")
+        .join("applied.jsonl");
+    let migration = fs::read_to_string(migration_path).expect("migration record should be written");
+    assert!(migration.contains("copied_legacy_to_canonical"));
 }
 
 #[test]
