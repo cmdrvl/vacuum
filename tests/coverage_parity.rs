@@ -385,9 +385,9 @@ fn refusal_envelope_for_missing_root_has_expected_code_and_message() {
 }
 
 #[test]
-fn refusal_envelope_for_missing_root_has_null_next_command() {
+fn refusal_envelope_for_missing_root_names_parent_listing_command() {
     let refusal = run_refusal(&["/definitely-missing-vacuum-root-parity-next"]);
-    assert!(refusal["refusal"]["next_command"].is_null());
+    assert_eq!(refusal["refusal"]["next_command"], "ls -la '/'");
 }
 
 #[test]

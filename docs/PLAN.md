@@ -61,6 +61,11 @@ All downstream stream tools expect vacuum's JSONL record schema as their baselin
 
 ```bash
 vacuum <ROOT>... [OPTIONS]
+vacuum --robot-triage
+vacuum capabilities --json
+vacuum robot-docs guide
+vacuum doctor <health|capabilities|robot-docs> [OPTIONS]
+vacuum doctor --robot-triage
 vacuum witness <query|last|count> [OPTIONS]
 ```
 
@@ -74,10 +79,21 @@ vacuum witness <query|last|count> [OPTIONS]
 - `--exclude <GLOB>`: Exclude pattern (repeatable). Applied after include. Matches against `relative_path`.
 - `--no-follow`: Do not follow symlinks (default: follow symlinks).
 - `--no-witness`: Suppress witness ledger recording for this run.
+- `--json`: Accepted explicit machine-output intent. For scans this is a no-op because stdout is already JSONL.
+- `--robot-triage`: Emit one machine-readable health, capability, command, and recommendation payload for agents.
 - `--describe`: Print the compiled-in `operator.json` to stdout and exit 0. Checked before root arguments are validated, so `vacuum --describe` works with no positional args.
 - `--schema`: Print the JSON Schema for the JSONL record to stdout and exit 0. Like `--describe`, checked before root arguments are validated.
 - `--progress`: Emit structured progress JSONL to stderr (see Progress reporting).
 - `--version`: Print `vacuum <semver>` to stdout and exit 0.
+
+### Agent discovery commands
+
+These commands are read-only and do not scan roots, append witness records, create witness directories, write doctor artifacts, rewrite metadata, or use the network.
+
+- `vacuum --robot-triage`: single JSON payload containing health, capabilities, output contracts, and recommended actions.
+- `vacuum capabilities --json`: machine-readable command surface and side-effect policy.
+- `vacuum robot-docs guide`: paste-ready operator guide for agents.
+- `vacuum doctor --fix`: intentionally unavailable until fixers have detector, backup, inverse, and fixture coverage; exits 2 and prints safe alternatives to stderr.
 
 ### Exit codes
 
@@ -135,7 +151,7 @@ A scan that finds zero files (empty directories, or all files excluded by `--inc
 
 ### 2. REFUSAL
 
-When vacuum cannot begin scanning (root doesn't exist, root can't be read, CLI error). Always includes a concrete next step.
+When vacuum cannot begin scanning (root doesn't exist, root can't be read, CLI error). Always includes a concrete next step in `refusal.next_command` when vacuum can name one safely.
 
 No other outcomes.
 

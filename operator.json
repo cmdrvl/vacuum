@@ -1,7 +1,7 @@
 {
   "schema_version": "operator.v0",
   "name": "vacuum",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
   "repository": "https://github.com/cmdrvl/vacuum",
   "license": "MIT",
@@ -10,8 +10,30 @@
     "binary": "vacuum",
     "output_mode": "stream",
     "output_schema": "vacuum.v0",
-    "json_flag": null
+    "json_flag": "--json"
   },
+  "commands": [
+    {
+      "name": "capabilities",
+      "usage": "vacuum capabilities --json",
+      "description": "Describe supported agent-facing command surfaces and side-effect policy"
+    },
+    {
+      "name": "robot-docs",
+      "usage": "vacuum robot-docs guide",
+      "description": "Print the agent-oriented command guide"
+    },
+    {
+      "name": "doctor",
+      "usage": "vacuum doctor --robot-triage",
+      "description": "Run read-only health checks and diagnostics"
+    },
+    {
+      "name": "witness",
+      "usage": "vacuum witness <query|last|count> [OPTIONS]",
+      "description": "Query the ambient witness ledger"
+    }
+  ],
   "arguments": [
     {
       "name": "roots",
@@ -41,6 +63,42 @@
       "flag": "--no-follow",
       "type": "boolean",
       "description": "Do not follow symlinks"
+    },
+    {
+      "name": "no_witness",
+      "flag": "--no-witness",
+      "type": "boolean",
+      "description": "Suppress witness ledger recording"
+    },
+    {
+      "name": "json",
+      "flag": "--json",
+      "type": "boolean",
+      "description": "Accepted explicit machine-output intent; scan stdout is already JSONL"
+    },
+    {
+      "name": "robot_triage",
+      "flag": "--robot-triage",
+      "type": "boolean",
+      "description": "Emit health, capability, and command guidance in one JSON payload"
+    },
+    {
+      "name": "describe",
+      "flag": "--describe",
+      "type": "boolean",
+      "description": "Print operator manifest JSON and exit"
+    },
+    {
+      "name": "schema",
+      "flag": "--schema",
+      "type": "boolean",
+      "description": "Print the vacuum.v0 JSON Schema and exit"
+    },
+    {
+      "name": "progress",
+      "flag": "--progress",
+      "type": "boolean",
+      "description": "Emit structured progress JSONL to stderr"
     }
   ],
   "exit_codes": {
@@ -76,7 +134,12 @@
       "*"
     ],
     "profile_aware": false,
-    "streaming": true
+    "streaming": true,
+    "agent_discovery": {
+      "capabilities_json": "vacuum capabilities --json",
+      "robot_triage": "vacuum --robot-triage",
+      "robot_docs": "vacuum robot-docs guide"
+    }
   },
   "pipeline": {
     "upstream": [],

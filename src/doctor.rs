@@ -13,20 +13,41 @@ const READ_ONLY_DOCTOR_CONTRACT: &str = "cmdrvl.read_only_doctor.v1";
 
 pub fn dispatch(robot_triage: bool, json_mode: bool, action: Option<&DoctorAction>) -> u8 {
     if robot_triage {
-        let report = triage_report();
-        print_json(&report);
-        return exit_for_report(report.get("health").unwrap_or(&Value::Null));
+        return dispatch_robot_triage();
     }
 
     match action {
         Some(DoctorAction::Health { json }) => render_health(*json || json_mode),
-        Some(DoctorAction::Capabilities { json }) => render_capabilities(*json || json_mode),
-        Some(DoctorAction::RobotDocs) => {
-            print_robot_docs();
-            exit::SCAN_COMPLETE
-        }
+        Some(DoctorAction::Capabilities { json }) => dispatch_capabilities(*json || json_mode),
+        Some(DoctorAction::RobotDocs) => dispatch_robot_docs(),
         None => render_health(json_mode),
     }
+}
+
+pub fn dispatch_unavailable_fix() -> u8 {
+    eprintln!(
+        "vacuum doctor --fix is not available: no fixer has detector, backup, inverse, and fixture coverage yet."
+    );
+    eprintln!("Safe alternatives:");
+    eprintln!("  vacuum doctor --robot-triage");
+    eprintln!("  vacuum doctor capabilities --json");
+    eprintln!("  vacuum capabilities --json");
+    exit::REFUSAL
+}
+
+pub fn dispatch_capabilities(json_mode: bool) -> u8 {
+    render_capabilities(json_mode)
+}
+
+pub fn dispatch_robot_docs() -> u8 {
+    print_robot_docs();
+    exit::SCAN_COMPLETE
+}
+
+pub fn dispatch_robot_triage() -> u8 {
+    let report = triage_report();
+    print_json(&report);
+    exit_for_report(report.get("health").unwrap_or(&Value::Null))
 }
 
 fn render_health(json_mode: bool) -> u8 {
@@ -101,6 +122,18 @@ fn capabilities_report() -> Value {
                 "description": "Run read-only static health checks."
             },
             {
+                "command": "vacuum --robot-triage",
+                "description": "Emit health, capabilities, output contracts, and recommendations in one JSON payload."
+            },
+            {
+                "command": "vacuum capabilities --json",
+                "description": "Describe supported command surfaces and side-effect policy."
+            },
+            {
+                "command": "vacuum robot-docs guide",
+                "description": "Print the agent-oriented command guide."
+            },
+            {
                 "command": "vacuum doctor capabilities --json",
                 "description": "Describe the doctor command surface and mutation policy."
             },
@@ -138,12 +171,27 @@ fn capabilities_report() -> Value {
         "output_contract": {
             "scan_stdout": "JSONL vacuum.v0 records or one refusal envelope",
             "doctor_stdout": "human text or JSON doctor reports",
-            "doctor_stderr": "unused on successful doctor commands"
+            "doctor_stderr": "unused on successful doctor commands",
+            "exit_codes": {
+                "0": "SCAN_COMPLETE or successful read-only discovery command",
+                "2": "REFUSAL or CLI usage error"
+            }
+        },
+        "agent_surfaces": {
+            "machine_discovery": "vacuum capabilities --json",
+            "robot_triage": "vacuum --robot-triage",
+            "agent_guide": "vacuum robot-docs guide",
+            "scan_jsonl": "vacuum --json <ROOT>..."
         },
         "fix_mode": {
             "status": "not_available",
-            "command": null,
-            "reason": "No vacuum fixer has detector, backup, inverse, and fixture coverage yet."
+            "command": "vacuum doctor --fix",
+            "reason": "No vacuum fixer has detector, backup, inverse, and fixture coverage yet.",
+            "safe_alternatives": [
+                "vacuum doctor --robot-triage",
+                "vacuum doctor capabilities --json",
+                "vacuum capabilities --json"
+            ]
         },
         "fixers": []
     })
@@ -377,20 +425,37 @@ fn print_capabilities_human(report: &Value) {
 }
 
 fn print_robot_docs() {
-    println!("# vacuum doctor robot docs");
+    println!("# vacuum robot docs");
     println!();
-    println!("`vacuum doctor` is a read-only diagnostic surface for agents.");
+    println!("`vacuum` scans directories and emits deterministic `vacuum.v0` JSONL on stdout.");
+    println!(
+        "Use `vacuum --json <ROOT>...` when you want to be explicit; the flag is accepted as a no-op because scan stdout is already machine-readable."
+    );
+    println!();
+    println!("Read-only discovery commands:");
+    println!(
+        "- `vacuum --robot-triage` for one JSON payload with health, capabilities, contracts, and recommendations."
+    );
+    println!("- `vacuum capabilities --json` for command surfaces and side-effect policy.");
+    println!("- `vacuum robot-docs guide` for this guide.");
+    println!();
+    println!("`vacuum doctor` remains a read-only diagnostic surface for operators.");
     println!(
         "It does not scan roots, read dataset file contents, append witness records, create witness directories, write doctor artifacts, rewrite metadata, or use the network."
     );
     println!();
-    println!("Commands:");
+    println!("Doctor commands:");
     println!("- `vacuum doctor health` for human health output.");
     println!("- `vacuum doctor health --json` for machine-readable health.");
     println!("- `vacuum doctor capabilities --json` for command and side-effect policy.");
     println!("- `vacuum doctor --robot-triage` for a single JSON triage payload.");
     println!();
-    println!("No fix mode is available. `vacuum doctor --fix` is intentionally unsupported.");
+    println!(
+        "Refusals are JSON envelopes on stdout and include `refusal.next_command` when vacuum can name an actionable next command."
+    );
+    println!(
+        "No fix mode is available. `vacuum doctor --fix` exits 2 and prints safe alternatives to stderr."
+    );
 }
 
 fn print_json(value: &Value) {

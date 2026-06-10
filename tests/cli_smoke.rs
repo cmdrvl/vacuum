@@ -65,6 +65,30 @@ fn fixture_scan_stdout_is_jsonl_records() {
 }
 
 #[test]
+fn json_flag_is_accepted_as_scan_noop() {
+    let output = support::vacuum_command("cli-json-noop")
+        .arg("--json")
+        .arg(fixture("simple"))
+        .arg("--no-witness")
+        .output()
+        .expect("vacuum binary should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "--json scan should not emit diagnostics: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert!(!stdout.trim().is_empty(), "scan should produce records");
+
+    for line in stdout.lines() {
+        let record: Value = serde_json::from_str(line).expect("manifest line should parse");
+        assert_eq!(record["version"], "vacuum.v0");
+    }
+}
+
+#[test]
 fn missing_root_refusal_returns_exit_two_and_refusal_json() {
     let missing_root = PathBuf::from("/definitely-missing-vacuum-root-smoke");
     let output = support::vacuum_command("cli-missing-root")
@@ -77,4 +101,19 @@ fn missing_root_refusal_returns_exit_two_and_refusal_json() {
         serde_json::from_slice(&output.stdout).expect("refusal stdout should be valid json");
     assert_eq!(refusal["outcome"], "REFUSAL");
     assert_eq!(refusal["refusal"]["code"], "E_ROOT_NOT_FOUND");
+    assert_eq!(refusal["refusal"]["next_command"], "ls -la '/'");
+}
+
+#[test]
+fn empty_roots_refusal_names_default_scan_command() {
+    let output = support::vacuum_command("cli-empty-roots")
+        .output()
+        .expect("vacuum binary should run");
+
+    assert_eq!(output.status.code(), Some(2));
+    let refusal: Value =
+        serde_json::from_slice(&output.stdout).expect("refusal stdout should be valid json");
+    assert_eq!(refusal["outcome"], "REFUSAL");
+    assert_eq!(refusal["refusal"]["code"], "E_ROOT_NOT_FOUND");
+    assert_eq!(refusal["refusal"]["next_command"], "vacuum .");
 }

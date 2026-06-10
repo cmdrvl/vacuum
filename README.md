@@ -175,6 +175,9 @@ cargo build --release
 
 ```bash
 vacuum <ROOT>... [OPTIONS]
+vacuum --robot-triage
+vacuum capabilities --json
+vacuum robot-docs guide
 vacuum doctor <health|capabilities|robot-docs> [OPTIONS]
 vacuum doctor --robot-triage
 vacuum witness <query|last|count> [OPTIONS]
@@ -192,10 +195,24 @@ vacuum witness <query|last|count> [OPTIONS]
 | `--exclude <GLOB>` | string | none | Exclude pattern (repeatable) |
 | `--no-follow` | flag | `false` | Do not follow symlinks |
 | `--no-witness` | flag | `false` | Suppress witness ledger recording |
+| `--json` | flag | `false` | Accepted explicit machine-output intent; scans already emit JSONL |
+| `--robot-triage` | flag | `false` | Emit one JSON health/capability/command payload for agents |
 | `--describe` | flag | `false` | Print compiled `operator.json` to stdout, exit `0` |
 | `--schema` | flag | `false` | Print JSONL record JSON schema, exit `0` |
 | `--progress` | flag | `false` | Emit structured progress JSONL to stderr |
 | `--version` | flag | `false` | Print `vacuum <semver>` to stdout, exit `0` |
+
+### Agent Discovery
+
+These commands are read-only and do not scan roots or append witness records:
+
+```bash
+vacuum --robot-triage
+vacuum capabilities --json
+vacuum robot-docs guide
+```
+
+Use `vacuum --json <ROOT>...` when you want to be explicit in automation. The flag is accepted as a no-op because normal scan stdout is already JSONL.
 
 ### Doctor Mode
 
@@ -209,7 +226,7 @@ vacuum doctor robot-docs
 vacuum doctor --robot-triage
 ```
 
-There is no fix mode in this release. `vacuum doctor --fix` is intentionally unavailable until a future fixer has detector, backup, inverse, and fixture coverage.
+There is no fix mode in this release. `vacuum doctor --fix` exits `2` and prints safe alternatives until a future fixer has detector, backup, inverse, and fixture coverage.
 
 ### Exit Codes
 

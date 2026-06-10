@@ -34,16 +34,33 @@ pub fn run() -> u8 {
         return handle_display_mode(DisplayMode::Schema);
     }
 
+    if cli.robot_triage {
+        return doctor::dispatch_robot_triage();
+    }
+
     if let Some(command) = cli.command.as_ref() {
         return match command {
             cli::args::Command::Witness { action } => witness::query::dispatch(action),
             cli::args::Command::Doctor {
                 robot_triage,
                 json,
+                fix,
                 action,
-            } => doctor::dispatch(*robot_triage, *json, action.as_ref()),
+            } => {
+                if *fix {
+                    doctor::dispatch_unavailable_fix()
+                } else {
+                    doctor::dispatch(*robot_triage, *json, action.as_ref())
+                }
+            }
+            cli::args::Command::Capabilities { json } => doctor::dispatch_capabilities(*json),
+            cli::args::Command::RobotDocs { action } => match action {
+                Some(cli::args::RobotDocsAction::Guide) | None => doctor::dispatch_robot_docs(),
+            },
         };
     }
+
+    let _scan_stdout_is_already_jsonl = cli.json;
 
     if cli.roots.is_empty() {
         let refusal = refusal::payload::empty_roots_refusal();

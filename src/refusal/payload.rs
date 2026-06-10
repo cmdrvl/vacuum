@@ -76,5 +76,12 @@ pub fn render(refusal: &Refusal) -> String {
 }
 
 pub fn empty_roots_refusal() -> Refusal {
-    Refusal::new(RefusalCode::RootNotFound, json!({ "root": "" }))
+    Refusal::new(
+        RefusalCode::RootNotFound,
+        json!({
+            "root": "",
+            "expected": "one or more root directories"
+        }),
+    )
+    .with_next_command("vacuum .")
 }

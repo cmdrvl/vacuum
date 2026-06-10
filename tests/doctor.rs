@@ -90,6 +90,80 @@ fn doctor_robot_triage_json_is_machine_readable() {
 }
 
 #[test]
+fn top_level_robot_triage_json_is_machine_readable() {
+    let home = TempDir::new().expect("temp home should be created");
+    let witness_path = home.path().join("witness.jsonl");
+    let output = isolated_command(home.path(), &witness_path)
+        .arg("--robot-triage")
+        .output()
+        .expect("vacuum robot triage should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        output.stderr.is_empty(),
+        "top-level robot triage should not emit stderr"
+    );
+    assert!(
+        !witness_path.exists(),
+        "top-level robot triage must not append or create the witness ledger"
+    );
+
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("robot triage should emit JSON");
+    assert_eq!(report["schema_version"], "vacuum.doctor.triage.v1");
+    assert_eq!(report["ok"], true);
+    assert_eq!(
+        report["capabilities"]["agent_surfaces"]["machine_discovery"],
+        "vacuum capabilities --json"
+    );
+}
+
+#[test]
+fn top_level_capabilities_json_is_machine_readable() {
+    let home = TempDir::new().expect("temp home should be created");
+    let witness_path = home.path().join("witness.jsonl");
+    let output = isolated_command(home.path(), &witness_path)
+        .args(["capabilities", "--json"])
+        .output()
+        .expect("vacuum capabilities should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !witness_path.exists(),
+        "capabilities must not append or create the witness ledger"
+    );
+
+    let report: Value =
+        serde_json::from_slice(&output.stdout).expect("capabilities should emit JSON");
+    assert_eq!(report["schema_version"], "vacuum.doctor.capabilities.v1");
+    assert_eq!(
+        report["agent_surfaces"]["robot_triage"],
+        "vacuum --robot-triage"
+    );
+}
+
+#[test]
+fn top_level_robot_docs_guide_prints_agent_commands() {
+    let home = TempDir::new().expect("temp home should be created");
+    let witness_path = home.path().join("witness.jsonl");
+    let output = isolated_command(home.path(), &witness_path)
+        .args(["robot-docs", "guide"])
+        .output()
+        .expect("vacuum robot docs should run");
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(
+        !witness_path.exists(),
+        "robot docs must not append or create the witness ledger"
+    );
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert!(stdout.contains("vacuum --robot-triage"));
+    assert!(stdout.contains("vacuum capabilities --json"));
+    assert!(stdout.contains("vacuum --json <ROOT>..."));
+}
+
+#[test]
 fn doctor_fix_is_not_available() {
     let home = TempDir::new().expect("temp home should be created");
     let witness_path = home.path().join("witness.jsonl");
@@ -105,8 +179,16 @@ fn doctor_fix_is_not_available() {
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf-8");
     assert!(
-        stderr.contains("unexpected argument '--fix'"),
+        stderr.contains("vacuum doctor --fix is not available"),
         "stderr should explain that --fix is unavailable: {stderr}"
+    );
+    assert!(
+        stderr.contains("vacuum doctor --robot-triage"),
+        "stderr should name the safe triage command: {stderr}"
+    );
+    assert!(
+        stderr.contains("vacuum capabilities --json"),
+        "stderr should name the safe capabilities command: {stderr}"
     );
     assert!(
         !witness_path.exists(),

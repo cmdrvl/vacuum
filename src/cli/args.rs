@@ -6,7 +6,7 @@ use clap::{ArgAction, Parser, Subcommand};
 #[command(
     name = "vacuum",
     about = "Enumerate artifacts and emit deterministic JSONL manifests",
-    long_about = None
+    long_about = "Enumerate artifacts and emit deterministic JSONL manifests.\n\nScan output is always JSONL on stdout. Use `vacuum --robot-triage`, `vacuum capabilities --json`, or `vacuum robot-docs guide` when an agent needs to discover the command contract without scanning a root."
 )]
 #[command(args_conflicts_with_subcommands = true)]
 #[command(disable_version_flag = true)]
@@ -34,6 +34,14 @@ pub struct Cli {
     #[arg(long)]
     pub no_witness: bool,
 
+    /// Accept explicit machine-output intent; scan stdout is already JSONL
+    #[arg(long)]
+    pub json: bool,
+
+    /// Emit machine-readable health, capability, and command guidance for agents
+    #[arg(long = "robot-triage")]
+    pub robot_triage: bool,
+
     /// Print operator manifest (operator.v0 JSON) and exit
     #[arg(long)]
     pub describe: bool,
@@ -53,10 +61,12 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Query the ambient witness ledger
     Witness {
         #[command(subcommand)]
         action: WitnessAction,
     },
+    /// Run read-only diagnostics and agent discovery
     Doctor {
         /// Emit machine-readable triage JSON for agents
         #[arg(long = "robot-triage")]
@@ -64,8 +74,22 @@ pub enum Command {
         /// Output health as JSON when no doctor subcommand is provided
         #[arg(long)]
         json: bool,
+        /// Unavailable until fixers have detector, backup, inverse, and fixture coverage
+        #[arg(long, hide = true)]
+        fix: bool,
         #[command(subcommand)]
         action: Option<DoctorAction>,
+    },
+    /// Describe supported agent-facing command surfaces
+    Capabilities {
+        /// Output JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print agent-oriented usage documentation
+    RobotDocs {
+        #[command(subcommand)]
+        action: Option<RobotDocsAction>,
     },
 }
 
@@ -85,6 +109,12 @@ pub enum DoctorAction {
     },
     /// Print agent-oriented doctor documentation
     RobotDocs,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum RobotDocsAction {
+    /// Print the agent-oriented command guide
+    Guide,
 }
 
 #[derive(Debug, Subcommand)]

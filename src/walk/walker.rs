@@ -339,21 +339,27 @@ fn refusal_from_io(root: &Path, error: io::Error) -> Refusal {
             json!({
                 "root": root.display().to_string(),
             }),
-        ),
+        )
+        .with_next_command(format!(
+            "ls -la {}",
+            shell_quote_root(suggested_scan_root(root))
+        )),
         io::ErrorKind::PermissionDenied => Refusal::new(
             RefusalCode::RootPermission,
             json!({
                 "root": root.display().to_string(),
                 "error": error.to_string(),
             }),
-        ),
+        )
+        .with_next_command(format!("ls -ld {}", shell_quote_root(root))),
         _ => Refusal::new(
             RefusalCode::Io,
             json!({
                 "root": root.display().to_string(),
                 "error": error.to_string(),
             }),
-        ),
+        )
+        .with_next_command(format!("ls -ld {}", shell_quote_root(root))),
     }
 }
 
