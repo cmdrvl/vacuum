@@ -183,6 +183,31 @@ fn capabilities_report() -> Value {
             "agent_guide": "vacuum robot-docs guide",
             "scan_jsonl": "vacuum --json <ROOT>..."
         },
+        "composition": {
+            "family": {
+                "name": "cmdrvl-spine",
+                "siblings": [
+                    {"tool": "vacuum", "capabilities": "vacuum capabilities --json"},
+                    {"tool": "hashbytes", "capabilities": "hashbytes capabilities --json"},
+                    {"tool": "fingerprint", "capabilities": "fingerprint capabilities --json"},
+                    {"tool": "lock", "capabilities": "lock capabilities --json"},
+                    {"tool": "pack", "capabilities": "pack capabilities --json"}
+                ]
+            },
+            "role": "start of the evidence stream; enumerate filesystem artifacts without reading file contents",
+            "position": 1,
+            "accepts": ["directory roots", "file roots"],
+            "produces": ["vacuum.v0 JSONL"],
+            "canonical_chain": [
+                "vacuum --json <ROOT>... | hashbytes | fingerprint --fp <ID> | lock --dataset-id <DATASET> > dataset.lock.json",
+                "pack seal dataset.lock.json --output evidence/<DATASET>/"
+            ],
+            "agent_rules": [
+                "Start with vacuum when the input is a directory or file tree.",
+                "Pipe vacuum stdout directly to hashbytes; do not parse human text.",
+                "Use vacuum capabilities --json when discovering the stream contract programmatically."
+            ]
+        },
         "fix_mode": {
             "status": "not_available",
             "command": "vacuum doctor --fix",
@@ -438,6 +463,15 @@ fn print_robot_docs() {
     );
     println!("- `vacuum capabilities --json` for command surfaces and side-effect policy.");
     println!("- `vacuum robot-docs guide` for this guide.");
+    println!();
+    println!("Composition:");
+    println!("- `vacuum` starts the CMD+RVL evidence stream and emits `vacuum.v0` JSONL.");
+    println!(
+        "- Canonical chain: `vacuum --json <ROOT>... | hashbytes | fingerprint --fp <ID> | lock --dataset-id <DATASET> > dataset.lock.json`."
+    );
+    println!(
+        "- Seal the resulting lockfile with `pack seal dataset.lock.json --output evidence/<DATASET>/`."
+    );
     println!();
     println!("`vacuum doctor` remains a read-only diagnostic surface for operators.");
     println!(

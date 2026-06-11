@@ -140,6 +140,14 @@ fn top_level_capabilities_json_is_machine_readable() {
         report["agent_surfaces"]["robot_triage"],
         "vacuum --robot-triage"
     );
+    assert_eq!(report["composition"]["family"]["name"], "cmdrvl-spine");
+    assert_eq!(report["composition"]["position"], 1);
+    assert_eq!(report["composition"]["produces"][0], "vacuum.v0 JSONL");
+    assert!(
+        report["composition"]["canonical_chain"][0]
+            .as_str()
+            .is_some_and(|command| command.contains("vacuum --json <ROOT>... | hashbytes"))
+    );
 }
 
 #[test]
@@ -161,6 +169,9 @@ fn top_level_robot_docs_guide_prints_agent_commands() {
     assert!(stdout.contains("vacuum --robot-triage"));
     assert!(stdout.contains("vacuum capabilities --json"));
     assert!(stdout.contains("vacuum --json <ROOT>..."));
+    assert!(stdout.contains("Composition:"));
+    assert!(stdout.contains("vacuum --json <ROOT>... | hashbytes | fingerprint --fp <ID>"));
+    assert!(stdout.contains("pack seal dataset.lock.json --output evidence/<DATASET>/"));
 }
 
 #[test]
