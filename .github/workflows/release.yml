@@ -153,6 +153,7 @@ jobs:
 
           STAGING="staging-${TARGET}"
           mkdir -p "$STAGING"
+          cp LICENSE "$STAGING/"
 
           if [[ "$TARGET" == *"windows"* ]]; then
             cp "target/$TARGET/release/${BIN_NAME}.exe" "$STAGING/"
@@ -160,7 +161,7 @@ jobs:
           else
             cp "target/$TARGET/release/${BIN_NAME}" "$STAGING/"
             cp scripts/s3-to-vacuum "$STAGING/"
-            tar -C "$STAGING" -czf "dist/${ARTIFACT}.tar.gz" "${BIN_NAME}" s3-to-vacuum
+            tar -C "$STAGING" -czf "dist/${ARTIFACT}.tar.gz" "${BIN_NAME}" s3-to-vacuum LICENSE
           fi
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action/download-syft@v0
