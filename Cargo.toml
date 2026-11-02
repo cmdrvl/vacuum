@@ -1,6 +1,6 @@
 [package]
 name = "vacuum"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 license = "MIT"
 exclude = ["tests/fixtures/symlinks/broken_link"]
