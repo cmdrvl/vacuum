@@ -377,17 +377,17 @@ vacuum /data --include "subdir/*.csv"
 
 ## S3 Scanning
 
-vacuum includes an `s3-to-vacuum` adapter script that converts `aws s3 ls` output into `vacuum.v0` JSONL, enabling S3 prefix scanning without native AWS SDK dependencies.
+Homebrew installs two commands: `vacuum` for local directories and `s3-to-vacuum` for S3 inventories. The adapter converts `aws s3 ls --recursive` output into `vacuum.v0` JSONL. From a source checkout, invoke it as `scripts/s3-to-vacuum`.
 
 ```bash
 # Scan an S3 prefix
-scripts/s3-to-vacuum s3://my-bucket/data/2025/
+TZ=UTC s3-to-vacuum s3://my-bucket/data/2025/
 
 # Multiple prefixes
-scripts/s3-to-vacuum s3://bucket/q3/ s3://bucket/q4/
+TZ=UTC s3-to-vacuum s3://bucket/q3/ s3://bucket/q4/
 
 # Check delivery completeness before downloading (with fingerprint struct-check)
-scripts/s3-to-vacuum s3://bucket/delivery/ \
+TZ=UTC s3-to-vacuum s3://bucket/delivery/ \
   | fingerprint struct-check --rules package.sf.yaml
 
 # If complete, pull down and run full pipeline locally
@@ -396,11 +396,11 @@ vacuum /data/q3 | hash | fingerprint --fp appraisal.v1 \
   | lock --dataset-id q3 > q3.lock.json
 ```
 
-**Requirements:** `aws` CLI (authenticated) and `jq`.
+**Requirements:** Bash 4 or newer on `PATH`, an authenticated `aws` CLI with permission to list the bucket, and `jq`. Set `TZ=UTC` as above because the adapter labels listing timestamps as UTC without converting them.
 
-The adapter emits identical `vacuum.v0` records — `path` uses `s3://` URIs, `relative_path` is the key minus prefix, and all downstream tools that consume `vacuum.v0` work unchanged. Records are deterministically sorted by `(relative_path, root)`.
+The adapter uses the same required `vacuum.v0` fields as the local scanner: `path` and `root` use `s3://` URIs, `relative_path` is the key minus the normalized prefix, and `tool_versions` identifies the adapter. Records from all prefixes are sorted by `(relative_path, root)` and emitted as one JSONL stream. Listing failures and empty prefixes produce a refusal envelope on stdout and exit `2`; a completed inventory exits `0`.
 
-**Note:** The full `vacuum → hash → fingerprint → lock` pipeline requires local files (hash reads file contents). The S3 adapter is designed for inventory and completeness checking — use `aws s3 sync` before running the content pipeline.
+**Limitations:** The adapter reads object listings, not object contents. It has no local scanner filters, symlink handling, per-file `_skipped` records, or witness recording. It buffers listings in memory and records in a temporary file before sorting, and its line-based parser cannot represent keys containing newlines. The full `vacuum → hash → fingerprint → lock` pipeline requires local files because hashing reads file contents; use `aws s3 sync` before running that pipeline.
 
 ---
 

@@ -1,5 +1,8 @@
 use std::process::Command;
 
+use clap::CommandFactory;
+use spine_rules::types::OperatorManifest;
+
 #[test]
 fn describe_prints_operator_manifest_without_roots() {
     let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
@@ -27,4 +30,32 @@ fn describe_prints_operator_manifest_without_roots() {
         serde_json::json!(["hash"])
     );
     assert!(manifest.get("outcome").is_none());
+}
+
+#[test]
+fn operator_subcommands_match_live_cli_using_spine_rules_manifest() {
+    let output = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .arg("--describe")
+        .output()
+        .expect("vacuum binary should run");
+    assert_eq!(output.status.code(), Some(0));
+    let manifest: OperatorManifest =
+        serde_json::from_slice(&output.stdout).expect("spine-rules should parse the manifest");
+    let declared = manifest
+        .subcommands
+        .iter()
+        .map(|command| command.name.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let cli = vacuum::cli::args::Cli::command();
+    let live = cli
+        .get_subcommands()
+        .map(|command| command.get_name())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    assert_eq!(declared.len(), manifest.subcommands.len());
+    assert_eq!(
+        declared, live,
+        "operator.json must list every live subcommand"
+    );
+    assert_eq!(manifest.version, env!("CARGO_PKG_VERSION"));
 }
