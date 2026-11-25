@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 echo "[smoke] building release binary"
-cargo build --release >/dev/null
+CARGO_BUILD_JOBS=3 cargo build --release >/dev/null
 BIN="$ROOT_DIR/target/release/vacuum"
 
 echo "[smoke] checking --version"
@@ -17,7 +17,7 @@ fi
 
 echo "[smoke] checking --describe"
 DESCRIBE_OUTPUT="$("$BIN" --describe)"
-if ! printf '%s\n' "$DESCRIBE_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"operator.v0"'; then
+if ! printf '%s\n' "$DESCRIBE_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"operator.v1"'; then
   echo "describe output missing operator schema_version" >&2
   exit 1
 fi
@@ -34,18 +34,41 @@ echo "[smoke] checking doctor health"
 
 echo "[smoke] checking doctor capabilities"
 CAPABILITIES_OUTPUT="$("$BIN" doctor capabilities --json)"
-if ! printf '%s\n' "$CAPABILITIES_OUTPUT" | grep -Eq '"read_only"[[:space:]]*:[[:space:]]*true'; then
-  echo "doctor capabilities output missing read_only=true" >&2
+if ! printf '%s\n' "$CAPABILITIES_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"cmdrvl.doctor.v1"'; then
+  echo "doctor capabilities output missing doctor schema_version" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$CAPABILITIES_OUTPUT" | grep -Eq '"mode"[[:space:]]*:[[:space:]]*"capabilities"'; then
+  echo "doctor capabilities output missing capabilities mode" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$CAPABILITIES_OUTPUT" | grep -Eq '"contract"[[:space:]]*:'; then
+  echo "doctor capabilities output missing operator.v1 contract" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$CAPABILITIES_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"operator.v1"'; then
+  echo "doctor capabilities output missing operator.v1 contract schema" >&2
   exit 1
 fi
 
 echo "[smoke] checking doctor robot docs"
 "$BIN" doctor robot-docs >/dev/null
 
-echo "[smoke] checking doctor robot triage"
-TRIAGE_OUTPUT="$("$BIN" doctor --robot-triage)"
-if ! printf '%s\n' "$TRIAGE_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"vacuum.doctor.triage.v1"'; then
-  echo "doctor robot triage output missing schema version" >&2
+echo "[smoke] checking doctor triage"
+TRIAGE_OUTPUT="$("$BIN" doctor triage --json)"
+if ! printf '%s\n' "$TRIAGE_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"cmdrvl.doctor.v1"'; then
+  echo "doctor triage output missing doctor schema_version" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$TRIAGE_OUTPUT" | grep -Eq '"mode"[[:space:]]*:[[:space:]]*"triage"'; then
+  echo "doctor triage output missing triage mode" >&2
+  exit 1
+fi
+
+echo "[smoke] checking legacy doctor robot triage alias"
+LEGACY_TRIAGE_OUTPUT="$("$BIN" doctor --robot-triage)"
+if ! printf '%s\n' "$LEGACY_TRIAGE_OUTPUT" | grep -Eq '"schema_version"[[:space:]]*:[[:space:]]*"cmdrvl.doctor.v1"'; then
+  echo "legacy doctor robot triage output missing doctor schema_version" >&2
   exit 1
 fi
 
