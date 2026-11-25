@@ -6,7 +6,9 @@ mod support;
 golden_rules_suite! {
     binary: support::vacuum_binary(),
     operator_json: include_str!("../operator.json"),
-    source_files: &["src/refusal/codes.rs", "src/walk/walker.rs"],
+    // E_SYMLINK_ESCAPE is an output warning, not a refusal envelope; only the
+    // refusal-code module belongs in the source/refusal parity scan.
+    source_files: &["src/refusal/codes.rs"],
     fixture_success_args: &[
         "tests/fixtures/simple",
         "--no-witness",

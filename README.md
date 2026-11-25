@@ -178,8 +178,8 @@ vacuum <ROOT>... [OPTIONS]
 vacuum --robot-triage
 vacuum capabilities --json
 vacuum robot-docs guide
-vacuum doctor <health|capabilities|robot-docs> [OPTIONS]
-vacuum doctor --robot-triage
+vacuum doctor <health|capabilities|triage|robot-docs> [OPTIONS]
+vacuum doctor triage --json
 vacuum witness <query|last|count> [OPTIONS]
 ```
 
@@ -222,8 +222,9 @@ Use `vacuum --json <ROOT>...` when you want to be explicit in automation. The fl
 vacuum doctor health
 vacuum doctor health --json
 vacuum doctor capabilities --json
+vacuum doctor triage --json
 vacuum doctor robot-docs
-vacuum doctor --robot-triage
+vacuum doctor --robot-triage  # deprecated alias for doctor triage
 ```
 
 There is no fix mode in this release. `vacuum doctor --fix` exits `2` and prints safe alternatives until a future fixer has detector, backup, inverse, and fixture coverage.
@@ -233,6 +234,7 @@ There is no fix mode in this release. `vacuum doctor --fix` exits `2` and prints
 | Code | Meaning |
 |------|---------|
 | `0` | SCAN_COMPLETE (all roots enumerated) |
+| `1` | Doctor found an unhealthy diagnostic (`cmdrvl.doctor.v1`) |
 | `2` | REFUSAL or CLI error |
 
 ### Streams
@@ -413,7 +415,7 @@ The adapter uses the same required `vacuum.v0` fields as the local scanner: `pat
 | **No content hashing** | vacuum doesn't read file contents — use `hash` for that |
 | **No recursive exclude** | `--exclude` patterns match against relative paths, not directory tree structure |
 | **Point-in-time snapshot** | No file watching — re-run vacuum to detect changes |
-| **No exit code 1** | Per-file failures are `_skipped` records, not partial outcomes (unlike `hash`/`lock`) |
+| **No scan verdict exit code 1** | Per-file failures are `_skipped` records, not partial outcomes (unlike `hash`/`lock`); `1` is reserved for unhealthy doctor state |
 
 ---
 
@@ -423,7 +425,7 @@ The adapter uses the same required `vacuum.v0` fields as the local scanner: `pat
 
 `find` produces unstructured text that requires parsing. vacuum produces deterministic JSONL with rich metadata (size, mtime, MIME type, extension) that pipes directly into the rest of the pipeline. Same directory always produces identical output.
 
-### Why is there no exit code 1?
+### Why does a scan never use exit code 1?
 
 vacuum's job is enumeration, not transformation. Either the scan starts (exit 0) or it can't (exit 2). Per-file issues like permission denied are recorded as `_skipped` records in the output stream — they don't prevent the scan from completing.
 

@@ -31,7 +31,7 @@ fn cli_smoke_flags_and_manifest_parse() {
     assert_eq!(describe.status.code(), Some(0));
     let describe_json: Value =
         serde_json::from_slice(&describe.stdout).expect("describe output should parse");
-    assert_eq!(describe_json["schema_version"], "operator.v0");
+    assert_eq!(describe_json["schema_version"], "operator.v1");
 
     let schema = support::vacuum_command("smoke-schema")
         .arg("--schema")
@@ -76,7 +76,7 @@ fn display_flags_short_circuit_before_invalid_witness_args_are_parsed() {
     assert_eq!(describe.status.code(), Some(0));
     let describe_json: Value =
         serde_json::from_slice(&describe.stdout).expect("describe output should parse");
-    assert_eq!(describe_json["schema_version"], "operator.v0");
+    assert_eq!(describe_json["schema_version"], "operator.v1");
     assert!(
         describe.stderr.is_empty(),
         "describe should not emit stderr"

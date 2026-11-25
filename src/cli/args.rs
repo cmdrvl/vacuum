@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{ArgAction, Parser, Subcommand};
+use clap::{ArgAction, ColorChoice, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -8,6 +8,7 @@ use clap::{ArgAction, Parser, Subcommand};
     about = "Enumerate artifacts and emit deterministic JSONL manifests",
     long_about = "Enumerate artifacts and emit deterministic JSONL manifests.\n\nScan output is always JSONL on stdout. Use `vacuum --robot-triage`, `vacuum capabilities --json`, or `vacuum robot-docs guide` when an agent needs to discover the command contract without scanning a root."
 )]
+#[command(color = ColorChoice::Never)]
 #[command(args_conflicts_with_subcommands = true)]
 #[command(disable_version_flag = true)]
 pub struct Cli {
@@ -42,7 +43,7 @@ pub struct Cli {
     #[arg(long = "robot-triage")]
     pub robot_triage: bool,
 
-    /// Print operator manifest (operator.v0 JSON) and exit
+    /// Print the operator.v1 manifest and exit
     #[arg(long)]
     pub describe: bool,
 
@@ -103,6 +104,12 @@ pub enum DoctorAction {
     },
     /// Describe supported doctor capabilities
     Capabilities {
+        /// Output JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run the triage report used by agents
+    Triage {
         /// Output JSON
         #[arg(long)]
         json: bool,

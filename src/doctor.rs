@@ -1,11 +1,16 @@
 use serde_json::{Value, json};
+use std::fs;
 
 use crate::{
     cli::{args::DoctorAction, exit},
-    output::jsonl::{operator_manifest, schema_manifest},
+    output::jsonl::schema_manifest,
     witness::ledger::resolve_ledger_path,
 };
 
+const DOCTOR_SCHEMA_VERSION: &str = "cmdrvl.doctor.v1";
+const OPERATOR_SCHEMA_VERSION: &str = "operator.v1";
+const CONTRACT_VERSION: &str = "1.0.0";
+const OPERATOR_MANIFEST: &str = include_str!("../operator.json");
 const HEALTH_SCHEMA_VERSION: &str = "vacuum.doctor.health.v1";
 const CAPABILITIES_SCHEMA_VERSION: &str = "vacuum.doctor.capabilities.v1";
 const TRIAGE_SCHEMA_VERSION: &str = "vacuum.doctor.triage.v1";
@@ -18,7 +23,8 @@ pub fn dispatch(robot_triage: bool, json_mode: bool, action: Option<&DoctorActio
 
     match action {
         Some(DoctorAction::Health { json }) => render_health(*json || json_mode),
-        Some(DoctorAction::Capabilities { json }) => dispatch_capabilities(*json || json_mode),
+        Some(DoctorAction::Capabilities { json }) => render_capabilities(*json || json_mode),
+        Some(DoctorAction::Triage { json }) => render_triage(*json || json_mode),
         Some(DoctorAction::RobotDocs) => dispatch_robot_docs(),
         None => render_health(json_mode),
     }
@@ -29,14 +35,22 @@ pub fn dispatch_unavailable_fix() -> u8 {
         "vacuum doctor --fix is not available: no fixer has detector, backup, inverse, and fixture coverage yet."
     );
     eprintln!("Safe alternatives:");
-    eprintln!("  vacuum doctor --robot-triage");
+    eprintln!("  vacuum doctor triage --json");
     eprintln!("  vacuum doctor capabilities --json");
     eprintln!("  vacuum capabilities --json");
     exit::REFUSAL
 }
 
 pub fn dispatch_capabilities(json_mode: bool) -> u8 {
-    render_capabilities(json_mode)
+    if json_mode {
+        print_operator_json();
+    } else {
+        println!("vacuum capabilities");
+        println!("operator contract: vacuum --describe");
+        println!("doctor: vacuum doctor --json");
+        println!("robot docs: vacuum robot-docs guide");
+    }
+    exit::SCAN_COMPLETE
 }
 
 pub fn dispatch_robot_docs() -> u8 {
@@ -45,13 +59,13 @@ pub fn dispatch_robot_docs() -> u8 {
 }
 
 pub fn dispatch_robot_triage() -> u8 {
-    let report = triage_report();
+    let report = doctor_v1_report("triage");
     print_json(&report);
-    exit_for_report(report.get("health").unwrap_or(&Value::Null))
+    exit_for_report(&report)
 }
 
 fn render_health(json_mode: bool) -> u8 {
-    let report = health_report();
+    let report = doctor_v1_report("health");
     if json_mode {
         print_json(&report);
     } else {
@@ -61,13 +75,24 @@ fn render_health(json_mode: bool) -> u8 {
 }
 
 fn render_capabilities(json_mode: bool) -> u8 {
-    let report = capabilities_report();
+    let report = doctor_v1_report("capabilities");
     if json_mode {
         print_json(&report);
     } else {
         print_capabilities_human(&report);
     }
-    exit::SCAN_COMPLETE
+    exit_for_report(&report)
+}
+
+fn render_triage(json_mode: bool) -> u8 {
+    let report = doctor_v1_report("triage");
+    if json_mode {
+        print_json(&report);
+    } else {
+        print_health_human(&report);
+        println!("next: vacuum capabilities --json");
+    }
+    exit_for_report(&report)
 }
 
 fn health_report() -> Value {
@@ -242,8 +267,101 @@ fn triage_report() -> Value {
     })
 }
 
+fn doctor_v1_report(mode: &str) -> Value {
+    let legacy = match mode {
+        "health" => health_report(),
+        "capabilities" => capabilities_report(),
+        "triage" => triage_report(),
+        _ => unreachable!("doctor mode is fixed by the caller"),
+    };
+    let checks = match mode {
+        "health" => legacy.get("checks").cloned().unwrap_or_else(|| json!([])),
+        "capabilities" => health_report()
+            .get("checks")
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        "triage" => legacy
+            .get("health")
+            .and_then(|health| health.get("checks"))
+            .cloned()
+            .unwrap_or_else(|| json!([])),
+        _ => unreachable!("doctor mode is fixed by the caller"),
+    };
+    let findings = checks
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|check| {
+            let status = check
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("error");
+            let severity = match status {
+                "ok" => "info",
+                "warn" => "warning",
+                _ => "error",
+            };
+            let mut finding = json!({
+                "id": format!(
+                    "vacuum.{}",
+                    check.get("name").and_then(Value::as_str).unwrap_or("unknown")
+                ),
+                "severity": severity,
+                "message": check
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .unwrap_or("doctor check failed"),
+            });
+            if severity == "error" {
+                finding["fix"] = json!("inspect vacuum doctor capabilities --json");
+            }
+            finding
+        })
+        .collect::<Vec<_>>();
+    let healthy = !findings
+        .iter()
+        .any(|finding| finding.get("severity").and_then(Value::as_str) == Some("error"));
+
+    let mut report = json!({
+        "schema_version": DOCTOR_SCHEMA_VERSION,
+        "mode": mode,
+        "tool": "vacuum",
+        "tool_version": env!("CARGO_PKG_VERSION"),
+        "healthy": healthy,
+        "findings": findings,
+    });
+    match mode {
+        "capabilities" => report["contract"] = operator_contract(),
+        "triage" => {
+            report["next_actions"] = if healthy {
+                json!(["vacuum capabilities --json", "vacuum robot-docs guide"])
+            } else {
+                json!(["vacuum doctor --json", "vacuum doctor capabilities --json"])
+            };
+        }
+        "health" => {}
+        _ => unreachable!("doctor mode is fixed by the caller"),
+    }
+    report
+}
+
+fn operator_contract() -> Value {
+    serde_json::from_str(OPERATOR_MANIFEST).expect("operator.json must be valid JSON")
+}
+
+fn contains_command(manifest: &Value, expected: &str) -> bool {
+    manifest
+        .get("commands")
+        .and_then(Value::as_array)
+        .is_some_and(|commands| {
+            commands
+                .iter()
+                .any(|command| command.get("name").and_then(Value::as_str) == Some(expected))
+        })
+}
+
 fn operator_manifest_check() -> Value {
-    let parsed = match serde_json::from_str::<Value>(operator_manifest()) {
+    let parsed = match serde_json::from_str::<Value>(OPERATOR_MANIFEST) {
         Ok(value) => value,
         Err(error) => {
             return check(
@@ -257,17 +375,25 @@ fn operator_manifest_check() -> Value {
 
     let expected_version = env!("CARGO_PKG_VERSION");
     let name_ok = parsed.get("name").and_then(Value::as_str) == Some("vacuum");
-    let schema_ok = parsed.get("schema_version").and_then(Value::as_str) == Some("operator.v0");
-    let version_ok = parsed.get("version").and_then(Value::as_str) == Some(expected_version);
+    let schema_ok =
+        parsed.get("schema_version").and_then(Value::as_str) == Some(OPERATOR_SCHEMA_VERSION);
+    let version_ok = parsed.get("tool_version").and_then(Value::as_str) == Some(expected_version);
+    let contract_ok =
+        parsed.get("contract_version").and_then(Value::as_str) == Some(CONTRACT_VERSION);
+    let commands_ok = ["capabilities", "robot-docs", "doctor"]
+        .iter()
+        .all(|required| contains_command(&parsed, required));
 
-    if name_ok && schema_ok && version_ok {
+    if name_ok && schema_ok && version_ok && contract_ok && commands_ok {
         check(
             "operator_manifest",
             "ok",
             "Compiled operator manifest matches the current binary.",
             json!({
                 "schema_version": parsed.get("schema_version"),
-                "version": parsed.get("version")
+                "tool_version": parsed.get("tool_version"),
+                "contract_version": parsed.get("contract_version"),
+                "commands": commands_ok
             }),
         )
     } else {
@@ -278,10 +404,13 @@ fn operator_manifest_check() -> Value {
             json!({
                 "expected_name": "vacuum",
                 "actual_name": parsed.get("name"),
-                "expected_schema_version": "operator.v0",
+                "expected_schema_version": OPERATOR_SCHEMA_VERSION,
                 "actual_schema_version": parsed.get("schema_version"),
                 "expected_version": expected_version,
-                "actual_version": parsed.get("version")
+                "actual_version": parsed.get("tool_version"),
+                "expected_contract_version": CONTRACT_VERSION,
+                "actual_contract_version": parsed.get("contract_version"),
+                "commands": commands_ok
             }),
         )
     }
@@ -326,11 +455,25 @@ fn schema_manifest_check() -> Value {
 fn witness_path_check() -> Value {
     let path = resolve_ledger_path();
     let parent = path.parent();
+    let path_status = match fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() => Some(("ok", "Witness ledger path is a file.")),
+        Ok(metadata) if metadata.is_dir() => Some((
+            "error",
+            "Witness ledger path is a directory, not an appendable ledger file.",
+        )),
+        Ok(_) => Some(("error", "Witness ledger path is not a regular file.")),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(_) => Some(("error", "Witness ledger path metadata could not be read.")),
+    };
+    let (status, message) = path_status.unwrap_or((
+        "ok",
+        "Witness ledger path is available for future append operations.",
+    ));
 
     check(
         "witness_path_resolution",
-        "ok",
-        "Resolved witness ledger path without creating directories or appending records.",
+        status,
+        message,
         json!({
             "path": path.display().to_string(),
             "parent": parent.map(|value| value.display().to_string()),
@@ -393,60 +536,39 @@ fn recommended_actions(ok: bool) -> Vec<&'static str> {
 }
 
 fn print_health_human(report: &Value) {
-    let summary = report.get("summary").unwrap_or(&Value::Null);
-    let errors = summary.get("error").and_then(Value::as_u64).unwrap_or(0);
-    let warnings = summary.get("warn").and_then(Value::as_u64).unwrap_or(0);
-    let passed = summary.get("ok").and_then(Value::as_u64).unwrap_or(0);
-    let state = if errors == 0 { "healthy" } else { "unhealthy" };
+    let healthy = report
+        .get("healthy")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    println!(
+        "vacuum doctor {}",
+        if healthy { "healthy" } else { "unhealthy" }
+    );
 
-    println!("vacuum doctor {state}: {passed} checks passed, {warnings} warnings, {errors} errors");
-
-    if let Some(checks) = report.get("checks").and_then(Value::as_array) {
-        for check in checks {
-            let status = check
-                .get("status")
+    if let Some(findings) = report.get("findings").and_then(Value::as_array) {
+        for finding in findings {
+            let severity = finding
+                .get("severity")
                 .and_then(Value::as_str)
                 .unwrap_or("error")
                 .to_ascii_uppercase();
-            let name = check
-                .get("name")
+            let id = finding
+                .get("id")
                 .and_then(Value::as_str)
                 .unwrap_or("<unknown>");
-            let message = check
+            let message = finding
                 .get("message")
                 .and_then(Value::as_str)
                 .unwrap_or("<no message>");
-            println!("[{status}] {name}: {message}");
+            println!("[{severity}] {id}: {message}");
         }
     }
 }
 
 fn print_capabilities_human(report: &Value) {
     println!("vacuum doctor capabilities");
-    println!(
-        "read_only: {}",
-        report.get("read_only").unwrap_or(&Value::Bool(false))
-    );
-    println!(
-        "contract: {}",
-        report.get("contract").and_then(Value::as_str).unwrap_or("")
-    );
-    println!(
-        "fix_mode: {}",
-        report
-            .get("fix_mode")
-            .and_then(|value| value.get("status"))
-            .and_then(Value::as_str)
-            .unwrap_or("unknown")
-    );
-    println!("commands:");
-    if let Some(commands) = report.get("commands").and_then(Value::as_array) {
-        for command in commands {
-            if let Some(name) = command.get("command").and_then(Value::as_str) {
-                println!("  - {name}");
-            }
-        }
-    }
+    println!("contract: vacuum capabilities --json");
+    println!("healthy: {}", report["healthy"]);
 }
 
 fn print_robot_docs() {
@@ -458,9 +580,8 @@ fn print_robot_docs() {
     );
     println!();
     println!("Read-only discovery commands:");
-    println!(
-        "- `vacuum --robot-triage` for one JSON payload with health, capabilities, contracts, and recommendations."
-    );
+    println!("- `vacuum doctor triage --json` for one canonical cmdrvl.doctor.v1 triage report.");
+    println!("- `vacuum --robot-triage` is a deprecated alias for doctor triage.");
     println!("- `vacuum capabilities --json` for command surfaces and side-effect policy.");
     println!("- `vacuum robot-docs guide` for this guide.");
     println!();
@@ -482,7 +603,8 @@ fn print_robot_docs() {
     println!("- `vacuum doctor health` for human health output.");
     println!("- `vacuum doctor health --json` for machine-readable health.");
     println!("- `vacuum doctor capabilities --json` for command and side-effect policy.");
-    println!("- `vacuum doctor --robot-triage` for a single JSON triage payload.");
+    println!("- `vacuum doctor --robot-triage` is a deprecated alias for doctor triage.");
+    println!("- An unhealthy doctor report exits 1; CLI errors and refusals exit 2.");
     println!();
     println!(
         "Refusals are JSON envelopes on stdout and include `refusal.next_command` when vacuum can name an actionable next command."
@@ -499,10 +621,21 @@ fn print_json(value: &Value) {
     );
 }
 
+fn print_operator_json() {
+    print!("{OPERATOR_MANIFEST}");
+    if !OPERATOR_MANIFEST.ends_with('\n') {
+        println!();
+    }
+}
+
 fn exit_for_report(report: &Value) -> u8 {
-    if report.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+    if report
+        .get("healthy")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
         exit::SCAN_COMPLETE
     } else {
-        exit::REFUSAL
+        1
     }
 }

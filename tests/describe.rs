@@ -1,7 +1,7 @@
 use std::process::Command;
 
 use clap::CommandFactory;
-use spine_rules::types::OperatorManifest;
+use spine_rules::contract::OperatorContract;
 
 #[test]
 fn describe_prints_operator_manifest_without_roots() {
@@ -20,9 +20,10 @@ fn describe_prints_operator_manifest_without_roots() {
     let manifest: serde_json::Value =
         serde_json::from_str(stdout.trim()).expect("describe should print JSON");
 
-    assert_eq!(manifest["schema_version"], "operator.v0");
+    assert_eq!(manifest["schema_version"], "operator.v1");
     assert_eq!(manifest["name"], "vacuum");
     assert_eq!(manifest["exit_codes"]["0"]["meaning"], "SCAN_COMPLETE");
+    assert_eq!(manifest["exit_codes"]["1"]["domain"], "unhealthy");
     assert_eq!(manifest["exit_codes"]["2"]["meaning"], "REFUSAL");
     assert_eq!(manifest["pipeline"]["upstream"], serde_json::json!([]));
     assert_eq!(
@@ -39,10 +40,10 @@ fn operator_subcommands_match_live_cli_using_spine_rules_manifest() {
         .output()
         .expect("vacuum binary should run");
     assert_eq!(output.status.code(), Some(0));
-    let manifest: OperatorManifest =
+    let manifest: OperatorContract =
         serde_json::from_slice(&output.stdout).expect("spine-rules should parse the manifest");
     let declared = manifest
-        .subcommands
+        .commands
         .iter()
         .map(|command| command.name.as_str())
         .collect::<std::collections::BTreeSet<_>>();
@@ -52,10 +53,10 @@ fn operator_subcommands_match_live_cli_using_spine_rules_manifest() {
         .map(|command| command.get_name())
         .collect::<std::collections::BTreeSet<_>>();
 
-    assert_eq!(declared.len(), manifest.subcommands.len());
+    assert_eq!(declared.len(), manifest.commands.len());
     assert_eq!(
         declared, live,
         "operator.json must list every live subcommand"
     );
-    assert_eq!(manifest.version, env!("CARGO_PKG_VERSION"));
+    assert_eq!(manifest.tool_version, env!("CARGO_PKG_VERSION"));
 }

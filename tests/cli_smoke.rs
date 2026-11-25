@@ -33,7 +33,7 @@ fn describe_and_schema_flags_print_valid_json() {
     let describe_json: Value =
         serde_json::from_slice(&describe.stdout).expect("describe should print json");
     assert_eq!(describe_json["name"], "vacuum");
-    assert_eq!(describe_json["schema_version"], "operator.v0");
+    assert_eq!(describe_json["schema_version"], "operator.v1");
 
     let schema = support::vacuum_command("cli-schema")
         .arg("--schema")

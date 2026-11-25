@@ -15,8 +15,9 @@ globset = "=0.4.16"
 blake3 = "=1.8.2"
 
 [dev-dependencies]
+jsonschema = "=0.42.1"
 tempfile = "=3.21.0"
-spine-rules = { git = "https://github.com/cmdrvl/spine-rules" }
+spine-rules = { git = "https://github.com/cmdrvl/spine-rules", rev = "f01b6a38b4f4de2cc625c663f5c69efeec23d322" }
 
 [profile.release]
 opt-level = "z"

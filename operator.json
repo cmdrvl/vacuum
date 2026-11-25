@@ -1,7 +1,8 @@
 {
-  "schema_version": "operator.v0",
+  "schema_version": "operator.v1",
   "name": "vacuum",
-  "version": "0.5.1",
+  "tool_version": "0.5.1",
+  "contract_version": "1.0.0",
   "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
   "repository": "https://github.com/cmdrvl/vacuum",
   "license": "MIT",
@@ -12,7 +13,7 @@
     "output_schema": "vacuum.v0",
     "json_flag": "--json"
   },
-  "subcommands": [
+  "commands": [
     {
       "name": "capabilities",
       "usage": "vacuum capabilities --json",
@@ -25,8 +26,8 @@
     },
     {
       "name": "doctor",
-      "usage": "vacuum doctor --robot-triage",
-      "description": "Run read-only health checks and diagnostics"
+      "usage": "vacuum doctor [health|capabilities|triage|robot-docs] [--json]",
+      "description": "Run cmdrvl.doctor.v1 diagnostics; exit 1 means unhealthy and exit 2 means CLI error"
     },
     {
       "name": "witness",
@@ -106,6 +107,10 @@
       "meaning": "SCAN_COMPLETE",
       "domain": "positive"
     },
+    "1": {
+      "meaning": "doctor found an unhealthy diagnostic",
+      "domain": "unhealthy"
+    },
     "2": {
       "meaning": "REFUSAL",
       "domain": "error"
@@ -129,6 +134,40 @@
       "hint": "vacuum scans directories, not individual files"
     }
   ],
+  "env_vars": [
+    {
+      "name": "HOME",
+      "description": "Base directory for the default witness ledger"
+    },
+    {
+      "name": "USERPROFILE",
+      "description": "Windows-compatible home directory fallback"
+    },
+    {
+      "name": "EPISTEMIC_WITNESS",
+      "description": "Optional explicit witness ledger path override"
+    },
+    {
+      "name": "NO_COLOR",
+      "description": "Disable ANSI terminal styling"
+    },
+    {
+      "name": "TERM",
+      "description": "Terminal capability hint; piped output is always ANSI-free"
+    }
+  ],
+  "formats": [
+    "vacuum.v0 JSONL",
+    "operator.v1 JSON",
+    "cmdrvl.doctor.v1 JSON"
+  ],
+  "side_effects": {
+    "reads_files": true,
+    "writes_files": true,
+    "network": false,
+    "writes_witness": true,
+    "notes": "Scanning reads directory metadata; scan may append a witness record unless --no-witness; doctor and introspection commands are read-only."
+  },
   "capabilities": {
     "formats": [
       "*"

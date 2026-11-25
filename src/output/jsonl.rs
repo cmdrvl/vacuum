@@ -64,7 +64,7 @@ mod tests {
         let manifest: Value =
             serde_json::from_str(operator_manifest()).expect("operator manifest should parse");
 
-        assert_eq!(manifest["schema_version"], "operator.v0");
+        assert_eq!(manifest["schema_version"], "operator.v1");
         assert_eq!(manifest["name"], "vacuum");
         assert_eq!(manifest["exit_codes"]["0"]["meaning"], "SCAN_COMPLETE");
         assert_eq!(manifest["exit_codes"]["2"]["meaning"], "REFUSAL");

@@ -64,8 +64,8 @@ vacuum <ROOT>... [OPTIONS]
 vacuum --robot-triage
 vacuum capabilities --json
 vacuum robot-docs guide
-vacuum doctor <health|capabilities|robot-docs> [OPTIONS]
-vacuum doctor --robot-triage
+vacuum doctor <health|capabilities|triage|robot-docs> [OPTIONS]
+vacuum doctor triage --json
 vacuum witness <query|last|count> [OPTIONS]
 ```
 
@@ -80,7 +80,7 @@ vacuum witness <query|last|count> [OPTIONS]
 - `--no-follow`: Do not follow symlinks (default: follow symlinks).
 - `--no-witness`: Suppress witness ledger recording for this run.
 - `--json`: Accepted explicit machine-output intent. For scans this is a no-op because stdout is already JSONL.
-- `--robot-triage`: Emit one machine-readable health, capability, command, and recommendation payload for agents.
+- `--robot-triage`: Deprecated alias for `vacuum doctor triage --json`.
 - `--describe`: Print the compiled-in `operator.json` to stdout and exit 0. Checked before root arguments are validated, so `vacuum --describe` works with no positional args.
 - `--schema`: Print the JSON Schema for the JSONL record to stdout and exit 0. Like `--describe`, checked before root arguments are validated.
 - `--progress`: Emit structured progress JSONL to stderr (see Progress reporting).
@@ -97,10 +97,11 @@ These commands are read-only and do not scan roots, append witness records, crea
 
 ### Exit codes
 
-- `0`: Scan completed (all roots enumerated successfully)
-- `2`: Refusal / CLI error
+- `0`: Scan completed (all roots enumerated successfully) or doctor is healthy
+- `1`: Doctor is unhealthy (`cmdrvl.doctor.v1` contains an `error` finding)
+- `2`: Refusal / CLI error; an unhealthy doctor is not a refusal
 
-There is no exit code `1` for vacuum. vacuum either scans successfully or refuses. There is no partial-success state at the scan level — per-file issues (permission denied on individual files) are recorded as `_skipped` records in the output stream and cause exit `0` (the scan completed; the failure is recorded as evidence).
+Vacuum has no scan-level negative verdict: it either scans successfully or refuses. There is no partial-success state at the scan level — per-file issues (permission denied on individual files) are recorded as `_skipped` records in the output stream and cause scan exit `0` (the scan completed; the failure is recorded as evidence). Exit `1` is reserved for an unhealthy `doctor` report.
 
 > **Design note:** exit `1` is reserved for domain-negative outcomes in the spine convention (e.g., rvl's REAL_CHANGE, shape's INCOMPATIBLE). vacuum has no domain-negative outcome — a successful scan is always positive regardless of what it finds.
 
@@ -599,9 +600,10 @@ For vacuum, `inputs[].hash` and `inputs[].bytes` are `null` because roots are di
 
 ```json
 {
-  "schema_version": "operator.v0",
+  "schema_version": "operator.v1",
   "name": "vacuum",
-  "version": "0.1.0",
+  "tool_version": "0.5.1",
+  "contract_version": "1.0.0",
   "description": "Enumerates artifacts in scope, emitting a stable JSONL manifest of files and metadata",
   "repository": "https://github.com/cmdrvl/vacuum",
   "license": "MIT",
