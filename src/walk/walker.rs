@@ -6,7 +6,7 @@ use std::{
 
 use chrono::{SecondsFormat, Utc};
 use serde_json::json;
-use walkdir::{Error as WalkdirError, WalkDir};
+use walkdir::{DirEntry, Error as WalkdirError, WalkDir};
 
 use crate::{
     record::{
@@ -43,55 +43,25 @@ pub fn scan_roots_with_progress(
         while let Some(entry) = walker.next() {
             match entry {
                 Ok(entry) => {
-                    if follow_symlinks
-                        && entry.path_is_symlink()
-                        && let Ok(target) = fs::canonicalize(entry.path())
-                        && !target.starts_with(&containment_root)
-                    {
-                        walker.skip_current_dir();
-                        records.push(build_symlink_escape_record(
-                            &absolute_root,
-                            &root_value,
-                            entry.path(),
-                            &target,
-                        ));
-                        progress.record_processed();
-                        progress.emit_if_due();
-
-                        if let Some(last_record) = records.last() {
-                            emit_warning_for_skipped(last_record, progress_enabled);
-                        }
-                        continue;
-                    }
-
-                    if entry.depth() == 0 || entry.file_type().is_dir() {
-                        continue;
-                    }
-
-                    records.push(build_record(
+                    let action = handle_entry(
                         &absolute_root,
                         &root_value,
-                        entry.path(),
+                        &containment_root,
+                        &entry,
                         follow_symlinks,
-                    ));
-                    progress.record_processed();
-                    progress.emit_if_due();
-
-                    if let Some(last_record) = records.last() {
-                        emit_warning_for_skipped(last_record, progress_enabled);
+                    );
+                    if action.skip_current_dir {
+                        walker.skip_current_dir();
+                    }
+                    if let Some(record) = action.record {
+                        append_record(&mut records, &mut progress, record, progress_enabled);
                     }
                 }
                 Err(error) => {
                     if let Some(skipped) =
                         build_skipped_from_walk_error(&absolute_root, &root_value, &error)
                     {
-                        records.push(skipped);
-                        progress.record_processed();
-                        progress.emit_if_due();
-
-                        if let Some(last_record) = records.last() {
-                            emit_warning_for_skipped(last_record, progress_enabled);
-                        }
+                        append_record(&mut records, &mut progress, skipped, progress_enabled);
                     }
                 }
             }
@@ -100,6 +70,71 @@ pub fn scan_roots_with_progress(
 
     progress.emit_final();
     records
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct EntryAction {
+    record: Option<VacuumRecord>,
+    skip_current_dir: bool,
+}
+
+fn handle_entry(
+    root: &Path,
+    root_value: &str,
+    containment_root: &Path,
+    entry: &DirEntry,
+    follow_symlinks: bool,
+) -> EntryAction {
+    if follow_symlinks
+        && entry.path_is_symlink()
+        && let Ok(target) = fs::canonicalize(entry.path())
+        && !target.starts_with(containment_root)
+    {
+        let skip_current_dir = fs::metadata(entry.path())
+            .map(|metadata| metadata.is_dir())
+            .unwrap_or(false);
+        return EntryAction {
+            record: Some(build_symlink_escape_record(
+                root,
+                root_value,
+                entry.path(),
+                &target,
+            )),
+            skip_current_dir,
+        };
+    }
+
+    if entry.depth() == 0 || entry.file_type().is_dir() {
+        return EntryAction {
+            record: None,
+            skip_current_dir: false,
+        };
+    }
+
+    EntryAction {
+        record: Some(build_record(
+            root,
+            root_value,
+            entry.path(),
+            follow_symlinks,
+        )),
+        skip_current_dir: false,
+    }
+}
+
+fn append_record(
+    records: &mut Vec<VacuumRecord>,
+    progress: &mut ProgressReporter,
+    record: VacuumRecord,
+    progress_enabled: bool,
+) {
+    records.push(record);
+    progress.record_processed();
+    progress.emit_if_due();
+
+    if let Some(last_record) = records.last() {
+        emit_warning_for_skipped(last_record, progress_enabled);
+    }
 }
 
 pub fn validate_roots(roots: &[PathBuf]) -> Result<(), Refusal> {
@@ -429,7 +464,12 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use super::{scan_roots, suggested_scan_root, validate_roots};
+    use walkdir::WalkDir;
+
+    use super::{
+        E_SYMLINK_ESCAPE, EntryAction, VacuumRecord, build_skipped_from_walk_error, handle_entry,
+        scan_roots, suggested_scan_root, validate_roots,
+    };
     use crate::refusal::codes::RefusalCode;
 
     fn fixture(name: &str) -> PathBuf {
@@ -584,6 +624,103 @@ mod tests {
         assert!(!records.iter().any(|record| {
             record.path == protected.display().to_string() && record._skipped != Some(true)
         }));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn entry_handler_emits_file_escape_without_skipping_following_entries() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+        let root = temp_dir.path().join("root");
+        let outside = temp_dir.path().join("outside");
+        fs::create_dir_all(&root).expect("root should be created");
+        fs::create_dir_all(&outside).expect("outside directory should be created");
+        let protected = outside.join("protected.txt");
+        fs::write(&protected, "outside-canary").expect("protected file should be created");
+        let link = root.join("escape-first");
+        symlink(&protected, &link).expect("escaping symlink should be created");
+        let plain = root.join("plain-after.txt");
+        fs::write(&plain, "plain").expect("plain file should be created");
+
+        let containment_root = fs::canonicalize(&root).expect("root should resolve");
+        let root_value = root.to_string_lossy().to_string();
+        let escape_entry = WalkDir::new(&root)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(Result::ok)
+            .find(|entry| entry.path() == link)
+            .expect("escaping entry should be found");
+
+        let action = handle_entry(&root, &root_value, &containment_root, &escape_entry, true);
+        assert!(
+            action.record.is_some(),
+            "escaping file should produce a record"
+        );
+        let skip_current_dir = action.skip_current_dir;
+        let record = action
+            .record
+            .expect("escaping file should produce a record");
+        assert!(!skip_current_dir);
+        assert_eq!(record._skipped, Some(true));
+        assert_eq!(record._warnings.as_ref().unwrap()[0].code, E_SYMLINK_ESCAPE);
+
+        let plain_entry = WalkDir::new(&root)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(Result::ok)
+            .find(|entry| entry.path() == plain)
+            .expect("plain entry should be found after escape");
+        let action = handle_entry(&root, &root_value, &containment_root, &plain_entry, true);
+        assert!(
+            action.record.is_some(),
+            "plain file should produce a record"
+        );
+        let skip_current_dir = action.skip_current_dir;
+        let record = action.record.expect("plain file should produce a record");
+        assert!(!skip_current_dir);
+        assert_ne!(record._skipped, Some(true));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn entry_handler_emits_cannot_read_skip_and_continues() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+        let root = temp_dir.path().join("root");
+        fs::create_dir_all(&root).expect("root should be created");
+        let broken = root.join("broken-first");
+        symlink("missing.txt", &broken).expect("broken symlink should be created");
+        let plain = root.join("plain-after.txt");
+        fs::write(&plain, "plain").expect("plain file should be created");
+
+        let containment_root = fs::canonicalize(&root).expect("root should resolve");
+        let root_value = root.to_string_lossy().to_string();
+        let broken_error = WalkDir::new(&root)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(Result::err)
+            .find(|error| error.path() == Some(broken.as_path()))
+            .expect("broken entry should produce a walk error");
+        let record = build_skipped_from_walk_error(&root, &root_value, &broken_error)
+            .expect("broken file should produce a record");
+        assert_eq!(record._skipped, Some(true));
+        assert_eq!(record._warnings.as_ref().unwrap()[0].code, "E_IO");
+
+        let plain_entry = WalkDir::new(&root)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(Result::ok)
+            .find(|entry| entry.path() == plain)
+            .expect("plain entry should be found after broken link");
+        assert!(matches!(
+            handle_entry(&root, &root_value, &containment_root, &plain_entry, true,),
+            EntryAction {
+                record: Some(VacuumRecord { _skipped: None, .. }),
+                skip_current_dir: false,
+            }
+        ));
     }
 
     #[cfg(unix)]

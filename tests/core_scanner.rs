@@ -108,6 +108,97 @@ fn symlink_modes_and_skipped_record_contract_hold() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn multiple_escaping_symlinks_do_not_drop_following_files() {
+    use std::os::unix::fs::symlink;
+
+    let temp_dir = tempfile::tempdir().expect("tempdir should be created");
+    let root = temp_dir.path().join("root");
+    let outside = temp_dir.path().join("outside");
+    let outside_dir = outside.join("directory");
+    std::fs::create_dir_all(&root).expect("root should exist");
+    std::fs::create_dir_all(&outside_dir).expect("outside directory should exist");
+    let relative_target = outside.join("relative-secret.txt");
+    let absolute_target = outside.join("absolute-secret.txt");
+    let directory_target = outside_dir.join("directory-secret.txt");
+    std::fs::write(&relative_target, "RELATIVE-OUTSIDE-CANARY")
+        .expect("relative target should exist");
+    std::fs::write(&absolute_target, "ABSOLUTE-OUTSIDE-CANARY")
+        .expect("absolute target should exist");
+    std::fs::write(&directory_target, "DIRECTORY-OUTSIDE-CANARY")
+        .expect("directory target should exist");
+
+    // Create escaping entries before the plain files. The unit test covers the
+    // handler directly; this integration case exercises the complete walk.
+    symlink(
+        "../outside/relative-secret.txt",
+        root.join("escape-relative"),
+    )
+    .expect("relative escaping symlink should exist");
+    symlink(&absolute_target, root.join("escape-absolute"))
+        .expect("absolute escaping symlink should exist");
+    symlink(&outside_dir, root.join("escape-directory"))
+        .expect("directory escaping symlink should exist");
+    for (name, contents) in [
+        ("plain-a.txt", "plain-a"),
+        ("plain-b.txt", "plain-b"),
+        ("plain-c.txt", "plain-c"),
+    ] {
+        std::fs::write(root.join(name), contents).expect("plain file should exist");
+    }
+
+    let output = support::vacuum_command("core-escape-complete")
+        .arg(&root)
+        .arg("--no-witness")
+        .output()
+        .expect("vacuum binary should run");
+    assert!(output.status.success(), "scan should exit 0");
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf-8");
+    assert!(!stdout.contains("RELATIVE-OUTSIDE-CANARY"));
+    assert!(!stdout.contains("ABSOLUTE-OUTSIDE-CANARY"));
+    assert!(!stdout.contains("DIRECTORY-OUTSIDE-CANARY"));
+    let rows = parse_json_lines(stdout.as_bytes());
+
+    let expected_plain = ["plain-a.txt", "plain-b.txt", "plain-c.txt"];
+    for relative_path in expected_plain {
+        let row = rows
+            .iter()
+            .find(|row| row["relative_path"] == relative_path)
+            .expect("plain file should be present");
+        assert_ne!(row["_skipped"], true);
+    }
+
+    for relative_path in ["escape-relative", "escape-absolute", "escape-directory"] {
+        let row = rows
+            .iter()
+            .find(|row| row["relative_path"] == relative_path)
+            .expect("escaping link should be present");
+        assert_eq!(row["_skipped"], true);
+        assert_eq!(row["_warnings"][0]["code"], "E_SYMLINK_ESCAPE");
+    }
+
+    let relative_paths = rows
+        .iter()
+        .map(|row| {
+            row["relative_path"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    let mut sorted_paths = relative_paths.clone();
+    sorted_paths.sort();
+    assert_eq!(relative_paths, sorted_paths);
+    let outside_prefix = outside.to_string_lossy();
+    assert!(rows.iter().all(|row| {
+        row["path"]
+            .as_str()
+            .is_none_or(|path| !path.starts_with(outside_prefix.as_ref()))
+    }));
+}
+
 #[test]
 fn mime_mapping_and_path_normalization_are_present_in_records() {
     let output = support::vacuum_command("core-mime")
