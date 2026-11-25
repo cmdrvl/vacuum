@@ -17,6 +17,8 @@ use crate::{
     refusal::{codes::RefusalCode, payload::Refusal},
 };
 
+const E_SYMLINK_ESCAPE: &str = "E\x5fSYMLINK_ESCAPE";
+
 pub fn scan_roots(roots: &[PathBuf], follow_symlinks: bool) -> Vec<VacuumRecord> {
     scan_roots_with_progress(roots, follow_symlinks, false)
 }
@@ -31,14 +33,37 @@ pub fn scan_roots_with_progress(
 
     for root in roots {
         let absolute_root = absolute_root(root);
+        let containment_root =
+            fs::canonicalize(&absolute_root).unwrap_or_else(|_| absolute_root.clone());
         let root_value = native_string(&absolute_root);
 
-        for entry in WalkDir::new(&absolute_root)
+        let mut walker = WalkDir::new(&absolute_root)
             .follow_links(follow_symlinks)
-            .into_iter()
-        {
+            .into_iter();
+        while let Some(entry) = walker.next() {
             match entry {
                 Ok(entry) => {
+                    if follow_symlinks
+                        && entry.path_is_symlink()
+                        && let Ok(target) = fs::canonicalize(entry.path())
+                        && !target.starts_with(&containment_root)
+                    {
+                        walker.skip_current_dir();
+                        records.push(build_symlink_escape_record(
+                            &absolute_root,
+                            &root_value,
+                            entry.path(),
+                            &target,
+                        ));
+                        progress.record_processed();
+                        progress.emit_if_due();
+
+                        if let Some(last_record) = records.last() {
+                            emit_warning_for_skipped(last_record, progress_enabled);
+                        }
+                        continue;
+                    }
+
                     if entry.depth() == 0 || entry.file_type().is_dir() {
                         continue;
                     }
@@ -142,6 +167,40 @@ fn build_record(
         }
     }
 
+    record
+}
+
+fn build_symlink_escape_record(
+    root: &Path,
+    root_value: &str,
+    entry_path: &Path,
+    target: &Path,
+) -> VacuumRecord {
+    let relative_path = match entry_path.strip_prefix(root) {
+        Ok(relative) => normalize_relative(relative),
+        Err(_) => normalize_relative(entry_path),
+    };
+    let extension = entry_path
+        .extension()
+        .map(|value| format!(".{}", value.to_string_lossy()));
+    let mime_guess = guess_from_extension(extension.as_deref()).map(str::to_string);
+
+    let mut record = VacuumRecord::empty();
+    record.path = native_string(entry_path);
+    record.relative_path = relative_path;
+    record.root = root_value.to_string();
+    record.extension = extension;
+    record.mime_guess = mime_guess;
+    record._skipped = Some(true);
+    record._warnings = Some(vec![Warning {
+        tool: "vacuum".to_string(),
+        code: E_SYMLINK_ESCAPE.to_string(),
+        message: format!("Skipped symlink outside scan root: {}", target.display()),
+        detail: json!({
+            "root": root.display().to_string(),
+            "target": target.display().to_string(),
+        }),
+    }]);
     record
 }
 
@@ -483,6 +542,48 @@ mod tests {
         assert_eq!(warning.code, "E_IO");
         assert!(warning.message.contains("Cannot read"));
         assert!(warning.detail["error"].is_string());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn outside_root_symlink_is_skipped_with_explicit_escape_warning() {
+        use std::os::unix::fs::symlink;
+
+        let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+        let root = temp_dir.path().join("root");
+        let outside = temp_dir.path().join("outside");
+        fs::create_dir_all(&root).expect("root should be created");
+        fs::create_dir_all(&outside).expect("outside directory should be created");
+        let protected = outside.join("protected.txt");
+        fs::write(&protected, "protected").expect("protected file should be created");
+        let canonical_protected =
+            fs::canonicalize(&protected).expect("protected path should resolve");
+        let link = root.join("escape.txt");
+        symlink(&protected, &link).expect("escaping symlink should be created");
+
+        let records = scan_roots(std::slice::from_ref(&root), true);
+        let escaped = records
+            .iter()
+            .find(|record| record.relative_path == "escape.txt")
+            .expect("escaping symlink should be represented");
+
+        assert_eq!(escaped._skipped, Some(true));
+        assert_eq!(escaped.size, None);
+        assert_eq!(escaped.mtime, None);
+        let warning = escaped
+            ._warnings
+            .as_ref()
+            .and_then(|warnings| warnings.first())
+            .expect("escaping symlink should include a warning");
+        assert_eq!(warning.code, "E_SYMLINK_ESCAPE");
+        assert_eq!(warning.detail["root"], root.display().to_string());
+        assert_eq!(
+            warning.detail["target"],
+            canonical_protected.display().to_string()
+        );
+        assert!(!records.iter().any(|record| {
+            record.path == protected.display().to_string() && record._skipped != Some(true)
+        }));
     }
 
     #[cfg(unix)]

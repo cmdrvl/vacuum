@@ -231,7 +231,7 @@ When multiple roots are provided, records from all roots are interleaved by `rel
 
 - `relative_path` always uses forward slashes (`/`), regardless of OS.
 - `path` and `root` use OS-native separators (for filesystem access).
-- When following symlinks (the default): `path` shows the resolved canonical target; `relative_path` preserves the **link name** as it appears in the directory tree (the link is what the user named; the target is where it points).
+- When following symlinks (the default): `path` shows the resolved canonical target for links within the scanned root; `relative_path` preserves the **link name** as it appears in the directory tree (the link is what the user named; the target is where it points). Links whose canonical target escapes the root are emitted as `_skipped` with an `E_SYMLINK_ESCAPE` warning.
 - With `--no-follow`: symlink files appear in the manifest with their own `lstat` metadata (`size` = link target path length, `mtime` = link mtime); symlink directories are not traversed (their children are never discovered).
 
 ### MIME guessing
@@ -503,7 +503,7 @@ pub struct RefusalPayload {
 ### Directory walking
 
 Use the `walkdir` crate for recursive directory traversal:
-- Follow symlinks by default; `--no-follow` disables
+- Follow symlinks by default only when the canonical target remains within the scanned root; `--no-follow` disables target traversal
 - Detect and break symlink cycles (walkdir handles this)
 - On per-entry errors (permission denied, broken symlink): emit a `_skipped` record with the path and warning, continue walking
 
@@ -666,7 +666,7 @@ Provide test fixtures in `tests/fixtures/`:
 - **Basic scan tests:** single root, multiple roots, nested directories
 - **Ordering tests:** output is sorted by `(relative_path, root)` deterministically
 - **Include/exclude tests:** glob patterns filter correctly
-- **Symlink tests:** follow by default, `--no-follow` skips, cycle detection
+- **Symlink tests:** follow in-root links by default, skip escaping links with `E_SYMLINK_ESCAPE`, `--no-follow` skips directory traversal, cycle detection
 - **Skipped record tests:** permission-denied files produce `_skipped` records with `_warnings`
 - **MIME guessing tests:** known extensions map correctly, unknown → null
 - **Path normalization tests:** `relative_path` uses forward slashes on all platforms

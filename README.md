@@ -447,7 +447,10 @@ All files from all roots appear in a single sorted manifest.
 
 ### How are symlinks handled?
 
-By default, vacuum follows symlinks and resolves targets to canonical paths. Use `--no-follow` to skip symlinks entirely.
+By default, vacuum follows symlinks that resolve within the scanned root and resolves their
+targets to canonical paths. A symlink escaping the root is emitted as `_skipped` with an
+`E_SYMLINK_ESCAPE` warning and is never hashed or locked. Use `--no-follow` to retain link
+metadata without traversing symlink directories.
 
 ### What MIME types does vacuum recognize?
 
