@@ -7,13 +7,11 @@ use crate::{
     witness::ledger::{ensure_ledger_migrated, resolve_ledger_path},
 };
 
-const NO_MATCH_EXIT: u8 = 1;
-
 pub fn dispatch(action: &WitnessAction) -> u8 {
     let entries = match read_entries() {
         Ok(entries) => entries,
         Err(error) => {
-            eprintln!("vacuum: witness read failed: {error}");
+            eprintln!("vacuum: witness: {error}");
             return crate::cli::exit::REFUSAL;
         }
     };
@@ -88,19 +86,17 @@ fn run_query(
         }
     }
 
-    if matches.is_empty() {
-        NO_MATCH_EXIT
-    } else {
-        crate::cli::exit::SCAN_COMPLETE
-    }
+    // An empty result is a successful read (family ADR): exit 0, `[]` already printed.
+    crate::cli::exit::SCAN_COMPLETE
 }
 
 fn run_last(entries: &[LedgerEntry], json_mode: bool) -> u8 {
     let Some(last) = entries.last() else {
+        // An empty or absent ledger is a successful read: `null` and exit 0 (family ADR).
         if json_mode {
-            println!("{{}}");
+            println!("null");
         }
-        return NO_MATCH_EXIT;
+        return crate::cli::exit::SCAN_COMPLETE;
     };
 
     if json_mode {
@@ -127,21 +123,24 @@ fn run_count(entries: &[LedgerEntry], filter: QueryFilter, json_mode: bool) -> u
         println!("{count}");
     }
 
-    if count == 0 {
-        NO_MATCH_EXIT
-    } else {
-        crate::cli::exit::SCAN_COMPLETE
-    }
+    crate::cli::exit::SCAN_COMPLETE
 }
 
 fn read_entries() -> Result<Vec<LedgerEntry>, std::io::Error> {
     ensure_ledger_migrated()?;
 
     let path = resolve_ledger_path();
-    let contents = match fs::read_to_string(path) {
+    let contents = match fs::read_to_string(&path) {
         Ok(contents) => contents,
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(error) => return Err(error),
+        // A directory, a permission error, or a line that is not valid UTF-8 refuses the read
+        // (exit 2) and names the ledger. Vacuum refuses invalid UTF-8 rather than skipping it.
+        Err(error) => {
+            return Err(std::io::Error::new(
+                error.kind(),
+                format!("failed to read ledger {}: {error}", path.display()),
+            ));
+        }
     };
 
     Ok(contents

@@ -41,7 +41,7 @@ fn witness_query_filters_and_limits_results_in_json_mode() {
 }
 
 #[test]
-fn witness_query_human_mode_renders_rows_and_no_match_exits_one() {
+fn witness_query_human_mode_renders_rows_and_no_match_exits_zero() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let ledger_path = temp_dir.path().join("witness.jsonl");
     write_ledger(&ledger_path);
@@ -61,10 +61,11 @@ fn witness_query_human_mode_renders_rows_and_no_match_exits_one() {
         .env("EPISTEMIC_WITNESS", &ledger_path)
         .output()
         .expect("witness query should run");
+    // bd-kxv: an empty result is a successful read (family ADR), not exit 1.
     assert_eq!(
         unmatched.status.code(),
-        Some(1),
-        "no-match query should exit 1"
+        Some(0),
+        "no-match query should exit 0"
     );
 }
 
@@ -111,15 +112,19 @@ fn witness_last_human_mode_and_empty_ledger_exit_behavior() {
         .env("EPISTEMIC_WITNESS", &empty_ledger)
         .output()
         .expect("witness last should run");
-    assert_eq!(
-        empty.status.code(),
-        Some(1),
-        "empty ledger should return no-match exit code"
-    );
+    // bd-kxv: an empty ledger is a successful read (family ADR): exit 0, `null` for --json.
+    assert_eq!(empty.status.code(), Some(0), "empty ledger should exit 0");
+    let empty_json = Command::new(env!("CARGO_BIN_EXE_vacuum"))
+        .args(["witness", "last", "--json"])
+        .env("EPISTEMIC_WITNESS", &empty_ledger)
+        .output()
+        .expect("witness last should run");
+    assert_eq!(empty_json.status.code(), Some(0));
+    assert_eq!(String::from_utf8_lossy(&empty_json.stdout).trim(), "null");
 }
 
 #[test]
-fn witness_count_honors_filters_and_no_match_exit_code() {
+fn witness_count_honors_filters_and_no_match_exits_zero() {
     let temp_dir = tempfile::tempdir().expect("tempdir should be created");
     let ledger_path = temp_dir.path().join("witness.jsonl");
     write_ledger(&ledger_path);
@@ -148,10 +153,15 @@ fn witness_count_honors_filters_and_no_match_exit_code() {
         .env("EPISTEMIC_WITNESS", &ledger_path)
         .output()
         .expect("witness count should run");
+    // bd-kxv: a zero count is a successful read (family ADR): exit 0 and {"count":0}.
     assert_eq!(
         unmatched.status.code(),
-        Some(1),
-        "no-match count should exit 1"
+        Some(0),
+        "no-match count should exit 0"
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&unmatched.stdout).trim(),
+        r#"{"count":0}"#
     );
 
     let human = Command::new(env!("CARGO_BIN_EXE_vacuum"))
@@ -198,5 +208,5 @@ fn witness_human_modes_and_empty_exit_behavior() {
         .env("EPISTEMIC_WITNESS", &ledger_path)
         .output()
         .expect("witness last should run");
-    assert_eq!(last_empty.status.code(), Some(1));
+    assert_eq!(last_empty.status.code(), Some(0));
 }
